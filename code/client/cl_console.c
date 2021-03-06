@@ -546,8 +546,8 @@ void writeTextToConsole(console_t *console, const char *txt, qboolean skipnotify
 
 
 	while ( (c = *txt) != 0 ) {
-		if ( Q_IsColorString( txt ) ) {
-			color = ColorIndex( *(txt+1) );
+		if ( Q_IsColorString( txt ) && *(txt+1) != '\n' ) {
+			color = ColorIndexFromChar( *(txt+1) );
 			txt += 2;
 			continue;
 		}
@@ -575,13 +575,21 @@ void writeTextToConsole(console_t *console, const char *txt, qboolean skipnotify
 		case '\r':
 			console->x = 0;
 			break;
-		default:// display character and advance
+		default:
+			//TODO this if is needed?
+			if ( console->newline ) {
+				Con_NewLine(console);
+				Con_Fixup(console);
+				console->newline = qfalse;
+			}
+
+			// display character and advance
 			y = console->current % console->totallines;
-			console->text[y*console->linewidth+console->x] = (color << 8) | c;
+			console->text[y*console->linewidth+console->x] = (color << 8) | (c & 255);
 			console->x++;
 			if (console->x >= console->linewidth) {
 				Con_Linefeed(console, skipnotify);
-				console->x = 0;
+				//console->x = 0;
 			}
 			break;
 		}
@@ -818,6 +826,7 @@ void Con_DrawSolidConsole( float frac ) {
 	vec4_t			color = {1, 0, 0, 1};
 	vec4_t			bgColor = {0, 0, 0, 0.85f};
 	vec4_t			darkTextColour = {0.25f, 0.25f, 0.25f, 1.0f};
+	vec4_t			whiteTextColour = {1.0f, 1.0f, 1.0f, 1.0f};
 
 
 
@@ -887,7 +896,7 @@ void Con_DrawSolidConsole( float frac ) {
 	  if (currentCon == &consoles[i]) {
 		tabWidth = SCR_FontWidth(consoleNames[i], 0.24f) + 30;
 		tabHeight = 22;
-		color[3] = 0.2;
+		color[3] = 1;
 	  } else {
 		tabWidth = SCR_FontWidth(consoleNames[i], 0.18f) + 18;
 		tabHeight = 18;
@@ -920,7 +929,7 @@ void Con_DrawSolidConsole( float frac ) {
 
 
 	  if (currentCon == &consoles[i]) {
-		SCR_DrawFontText(horizOffset + 15, vertOffset + 14, 0.24f, darkTextColour, consoleNames[i], ITEM_TEXTSTYLE_SHADOWED);
+		SCR_DrawFontText(horizOffset + 15, vertOffset + 14, 0.24f, whiteTextColour , consoleNames[i], ITEM_TEXTSTYLE_SHADOWED);
 	  } else {
 		SCR_DrawFontText(horizOffset + 9, vertOffset + 12, 0.18f, darkTextColour, consoleNames[i], ITEM_TEXTSTYLE_SHADOWED);
 	  }
