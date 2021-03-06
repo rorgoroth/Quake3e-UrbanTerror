@@ -300,7 +300,7 @@ extern const int demo_protocols[];
 #define	AUTHORIZE_SERVER_NAME	"authorize.quake3arena.com"
 #endif
 
-#define	PORT_MASTER			27950
+#define	PORT_MASTER			27900
 #define	PORT_UPDATE			27951
 #ifndef PORT_AUTHORIZE
 #define	PORT_AUTHORIZE		27952
