@@ -2345,6 +2345,9 @@ void CL_NextDownload( void )
 
 		*s++ = '\0';
 		localName = s;
+
+		Com_sprintf(localName, MAX_STRING_CHARS, "%s/download/%s",FS_GetCurrentGameDir(),COM_SkipPath(CopyString(localName)));
+
 		if ( (s = strchr(s, '@')) != NULL )
 			*s++ = '\0';
 		else
