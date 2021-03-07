@@ -1,4 +1,4 @@
-	/*
+/*
 ===========================================================================
 Copyright (C) 1999-2005 Id Software, Inc.
 
@@ -194,7 +194,7 @@ static int GLW_SetMode( int mode, const char *modeFS, qboolean fullscreen, qbool
 	int display;
 	int x;
 	int y;
-	Uint32 flags = SDL_WINDOW_SHOWN;
+	Uint32 flags = 0; // SDL_WINDOW_SHOWN
 #ifdef USE_VULKAN_API
 	if ( vulkan ) {
 		flags |= SDL_WINDOW_VULKAN;
@@ -275,6 +275,8 @@ static int GLW_SetMode( int mode, const char *modeFS, qboolean fullscreen, qbool
 	{
 		flags |= SDL_WINDOW_BORDERLESS;
 	}
+
+	flags |= SDL_WINDOW_ALLOW_HIGHDPI;
 
 	config->isFullscreen = fullscreen;
 	colorBits = r_colorbits->value;
@@ -624,6 +626,8 @@ void GLimp_Init( glconfig_t *config )
 
 	// This depends on SDL_INIT_VIDEO, hence having it here
 	IN_Init();
+
+	SDL_ShowWindow( SDL_window );
 }
 
 
@@ -719,6 +723,8 @@ void VKimp_Init( glconfig_t *config )
 
 	// This depends on SDL_INIT_VIDEO, hence having it here
 	IN_Init();
+
+	SDL_ShowWindow( SDL_window );
 }
 
 
