@@ -3,7 +3,9 @@
 [![build](../../workflows/build/badge.svg)](../../actions?query=workflow%3Abuild) * <a href="https://discord.gg/X3Exs4C"><img src="https://img.shields.io/discord/314456230649135105?color=7289da&logo=discord&logoColor=white" alt="Discord server" /></a>
 
 Modded for Urbanterror ( beta - noauth, no dmahd ).
-You need to run it with: ./quake3e.x64 +set fs_game q3ut4
+
+Compile and copy to your /opt/urbanterror/
+Then run: ./quake3e-urt-s.x64 
 
 This is a modern Quake III Arena engine aimed to be fast, secure and compatible with all existing Q3A mods.
 It is based on last non-SDL source dump of ioquake3 with latest upstream fixes applied.
