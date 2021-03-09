@@ -4699,9 +4699,9 @@ static void FS_Startup( void ) {
 	// fs_homepath is somewhat particular to *nix systems, only add if relevant
 	// NOTE: same filtering below for mods and basegame
 	if ( fs_homepath->string[0] && Q_stricmp( fs_homepath->string, fs_basepath->string ) ) {
-		FS_AddGameDirectory( fs_homepath->string, va("%s/download", fs_gamedirvar->string));
 		FS_AddGameDirectory( fs_homepath->string, fs_basegame->string );
 	}
+	FS_AddGameDirectory( fs_homepath->string, va("%s/download", fs_gamedirvar->string));
 
 	// check for additional game folder for mods
 	if ( fs_gamedirvar->string[0] && Q_stricmp( fs_gamedirvar->string, fs_basegame->string ) ) {
