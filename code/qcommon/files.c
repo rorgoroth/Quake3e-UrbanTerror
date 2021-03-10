@@ -4310,6 +4310,11 @@ qboolean FS_ComparePaks( char *neededpaks, int len, qboolean dlstring ) {
 		// Ok, see if we have this pak file
 		havepak = qfalse;
 
+		// never autodownload any of the urbanterror paks
+		if ( FS_GamePak(fs_serverReferencedPakNames[i]) ) {
+			continue;
+		}
+
 		// Make sure the server cannot make us write to non-quake3 directories.
 		if ( FS_CheckDirTraversal( fs_serverReferencedPakNames[i] ) ) {
 			Com_Printf( "WARNING: Invalid download name %s\n", fs_serverReferencedPakNames[i] );
