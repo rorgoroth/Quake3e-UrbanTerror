@@ -922,6 +922,8 @@ qboolean Com_DL_Begin( download_t *dl, const char *localName, const char *remote
 		Q_strncpyz( dl->gameDir, FS_GetCurrentGameDir(), sizeof( dl->gameDir ) );
 	}
 
+	Com_sprintf(dl->gameDir, MAX_STRING_CHARS, "%s/download", COM_SkipPath(CopyString(dl->gameDir)));
+
 	// try to extract game path from localName
 	// dl->Name should contain only pak name without game dir and extension
 	s = strrchr( localName, '/' );
