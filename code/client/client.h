@@ -279,12 +279,16 @@ typedef struct {
 	int			netType;
 	int			gameType;
 	int		  	clients;
+	int         bots;
 	int		  	maxClients;
 	int			minPing;
 	int			maxPing;
 	int			ping;
 	qboolean	visible;
 	int			punkbuster;
+	int			auth;
+	int			password;
+	char 		modversion[MAX_NAME_LENGTH];
 	int			g_humanplayers;
 	int			g_needpass;
 } serverInfo_t;
@@ -441,6 +445,13 @@ extern	cvar_t	*r_colorbits;
 extern	cvar_t	*cl_stencilbits;
 extern	cvar_t	*cl_depthbits;
 extern	cvar_t	*cl_drawBuffer;
+
+#ifdef USE_AUTH
+extern  cvar_t	*cl_auth_engine;
+extern  cvar_t  *cl_auth;
+extern  cvar_t  *authc;
+extern  cvar_t  *authl; // Auth Login
+#endif
 
 //=================================================
 

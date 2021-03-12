@@ -93,6 +93,13 @@ cvar_t *cl_stencilbits;
 cvar_t *cl_depthbits;
 cvar_t *cl_drawBuffer;
 
+#ifdef USE_AUTH
+cvar_t  *cl_auth_engine;
+cvar_t  *cl_auth;
+cvar_t  *authc;
+cvar_t  *authl;
+#endif
+
 clientActive_t		cl;
 clientConnection_t	clc;
 clientStatic_t		cls;
@@ -2674,9 +2681,13 @@ static void CL_InitServerInfo( serverInfo_t *server, const netadr_t *address ) {
 	server->game[0] = '\0';
 	server->gameType = 0;
 	server->netType = 0;
+	server->auth = 0;
+	server->password = 0;
+	server->modversion[0] = '\0';
 	server->punkbuster = 0;
 	server->g_humanplayers = 0;
 	server->g_needpass = 0;
+	server->bots = 0;
 }
 
 #define MAX_SERVERSPERPACKET	256
@@ -3066,6 +3077,13 @@ static qboolean CL_ConnectionlessPacket( const netadr_t *from, msg_t *msg ) {
 		CL_ServersResponsePacket( from, msg, qtrue );
 		return qfalse;
 	}
+
+#ifdef USE_AUTH
+	if (strstr(c, "AUTH:CL") ) {
+		VM_Call( uivm, 1, UI_AUTHSERVER_PACKET, from);
+		return qfalse;
+	}
+#endif
 
 	Com_DPrintf( "Unknown connectionless packet command.\n" );
 	return qfalse;
@@ -4151,7 +4169,15 @@ void CL_Init( void ) {
 
 	Cvar_SetDescription( cl_dlDirectory, s );
 
+
 	cl_reconnectArgs = Cvar_Get( "cl_reconnectArgs", "", CVAR_ARCHIVE_ND | CVAR_NOTABCOMPLETE );
+
+#ifdef USE_AUTH
+	cl_auth_engine = Cvar_Get( "cl_auth_engine", "1", CVAR_TEMP | CVAR_ROM);
+	cl_auth = Cvar_Get("cl_auth", "0", CVAR_TEMP | CVAR_ROM);
+	authc = Cvar_Get("authc", "0", CVAR_TEMP | CVAR_USERINFO);
+	authl = Cvar_Get("authl", "", CVAR_TEMP | CVAR_USERINFO);
+#endif
 
 	// userinfo
 	Cvar_Get ("name", "UnnamedPlayer", CVAR_USERINFO | CVAR_ARCHIVE_ND );
@@ -4318,6 +4344,7 @@ static void CL_SetServerInfo(serverInfo_t *server, const char *info, int ping) {
 	if (server) {
 		if (info) {
 			server->clients = atoi(Info_ValueForKey(info, "clients"));
+			server->bots = atoi(Info_ValueForKey(info, "bots"));
 			Q_strncpyz(server->hostName,Info_ValueForKey(info, "hostname"), MAX_NAME_LENGTH);
 			Q_strncpyz(server->mapName, Info_ValueForKey(info, "mapname"), MAX_NAME_LENGTH);
 			server->maxClients = atoi(Info_ValueForKey(info, "sv_maxclients"));
@@ -4329,6 +4356,9 @@ static void CL_SetServerInfo(serverInfo_t *server, const char *info, int ping) {
 			server->punkbuster = atoi(Info_ValueForKey(info, "punkbuster"));
 			server->g_humanplayers = atoi(Info_ValueForKey(info, "g_humanplayers"));
 			server->g_needpass = atoi(Info_ValueForKey(info, "g_needpass"));
+			server->auth = atoi(Info_ValueForKey(info, "auth"));
+			server->password = atoi(Info_ValueForKey(info, "password"));
+			Q_strncpyz(server->modversion, Info_ValueForKey(info, "modversion"), MAX_NAME_LENGTH);
 		}
 		server->ping = ping;
 	}
