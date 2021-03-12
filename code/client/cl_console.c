@@ -181,6 +181,42 @@ static void Con_MessageMode4_f( void ) {
 	Key_SetCatcher( Key_GetCatcher() ^ KEYCATCH_MESSAGE );
 }
 
+/*
+================
+Con_TellmeButton_f
+================
+*/
+static void Con_TellmeButton_f( void ) {
+	chat_playerNum = clc.clientNum;
+
+	if ( chat_playerNum < 0 || chat_playerNum >= MAX_CLIENTS ) {
+		chat_playerNum = -1;
+		return;
+	}
+        Com_Printf( "tellmeButton \n" );
+	chat_team = qtrue;
+	Field_Clear( &chatField );
+	chatField.widthInChars = 30;
+	Key_SetCatcher( Key_GetCatcher() ^ KEYCATCH_MESSAGE );
+}
+
+/*
+================
+Con_TellmeScript_f
+================
+*/
+static void Con_TellmeScript_f( void ) {
+	char    buffer[MAX_STRING_CHARS];
+	chat_playerNum = clc.clientNum;
+	 if ( Cmd_Argc() != 2 )
+        {
+                Com_Printf( "usage: tellmescript <string>\n" );
+                return;
+        }
+
+	Com_sprintf( buffer, sizeof( buffer ), "tell %i \"%s\"\n", chat_playerNum, Cmd_Argv( 1 ) );
+	CL_AddReliableCommand( buffer, qfalse );
+}
 
 /*
 ================
@@ -440,6 +476,8 @@ void Con_Init( void )
 	Cmd_AddCommand( "messagemode2", Con_MessageMode2_f );
 	Cmd_AddCommand( "messagemode3", Con_MessageMode3_f );
 	Cmd_AddCommand( "messagemode4", Con_MessageMode4_f );
+	Cmd_AddCommand( "tellmebutton", Con_TellmeButton_f );
+	Cmd_AddCommand( "tellmescript", Con_TellmeScript_f );
 }
 
 
@@ -457,6 +495,9 @@ void Con_Shutdown( void )
 	Cmd_RemoveCommand( "messagemode2" );
 	Cmd_RemoveCommand( "messagemode3" );
 	Cmd_RemoveCommand( "messagemode4" );
+	Cmd_RemoveCommand( "tellmebutton" );
+	Cmd_RemoveCommand( "tellmescript" );
+
 }
 
 
