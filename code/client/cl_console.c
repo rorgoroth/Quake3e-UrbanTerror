@@ -208,13 +208,13 @@ Con_TellmeScript_f
 static void Con_TellmeScript_f( void ) {
 	char    buffer[MAX_STRING_CHARS];
 	chat_playerNum = clc.clientNum;
-	 if ( Cmd_Argc() != 2 )
+	 if ( Cmd_Argc() < 2 )
         {
                 Com_Printf( "usage: tellmescript <string>\n" );
                 return;
         }
 
-	Com_sprintf( buffer, sizeof( buffer ), "tell %i \"%s\"\n", chat_playerNum, Cmd_Argv( 1 ) );
+	Com_sprintf( buffer, sizeof( buffer ), "tell %i \"%s\"\n", chat_playerNum, Cmd_ArgsFrom(1) );
 	CL_AddReliableCommand( buffer, qfalse );
 }
 
