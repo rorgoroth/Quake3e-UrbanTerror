@@ -64,6 +64,7 @@ static cvar_t *j_up_axis;
 static cvar_t *cl_consoleKeys;
 
 static int in_eventTime = 0;
+static qboolean mouse_focus;
 
 #define CTRL(a) ((a)-'a'+1)
 
@@ -355,6 +356,8 @@ static void IN_GobbleMouseEvents( void )
 }
 
 
+//#define DEBUG_EVENTS
+
 /*
 ===============
 IN_ActivateMouse
@@ -371,6 +374,15 @@ static void IN_ActivateMouse( void )
 
 		SDL_SetRelativeMouseMode( in_mouse->integer == 1 ? SDL_TRUE : SDL_FALSE );
 		SDL_SetWindowGrab( SDL_window, SDL_TRUE );
+
+		if ( glw_state.isFullscreen )
+			SDL_ShowCursor( SDL_FALSE );
+
+		SDL_WarpMouseInWindow( SDL_window, glw_state.window_width / 2, glw_state.window_height / 2 );
+
+#ifdef DEBUG_EVENTS
+		Com_Printf( "%4i %s\n", Sys_Milliseconds(), __func__ );
+#endif
 	}
 
 	// in_nograb makes no sense in fullscreen mode
@@ -406,15 +418,23 @@ static void IN_DeactivateMouse( void )
 
 	if ( mouseActive )
 	{
+#ifdef DEBUG_EVENTS
+		Com_Printf( "%4i %s\n", Sys_Milliseconds(), __func__ );
+#endif
 		IN_GobbleMouseEvents();
 
 		SDL_SetWindowGrab( SDL_window, SDL_FALSE );
 		SDL_SetRelativeMouseMode( SDL_FALSE );
 
-		if ( gw_active && !gw_minimized )
+		if ( gw_active )
 			SDL_WarpMouseInWindow( SDL_window, glw_state.window_width / 2, glw_state.window_height / 2 );
 		else
+		{
+			if ( glw_state.isFullscreen )
+				SDL_ShowCursor( SDL_TRUE );
+
 			SDL_WarpMouseGlobal( glw_state.desktop_width / 2, glw_state.desktop_height / 2 );
+		}
 
 		mouseActive = qfalse;
 	}
@@ -999,6 +1019,39 @@ static void IN_JoyMove( void )
 #endif  // USE_JOYSTICK
 
 
+
+#ifdef DEBUG_EVENTS
+static const char *eventName( SDL_WindowEventID event )
+{
+	static char buf[32];
+
+	switch ( event )
+	{
+		case SDL_WINDOWEVENT_NONE: return "NONE";
+		case SDL_WINDOWEVENT_SHOWN: return "SHOWN";
+		case SDL_WINDOWEVENT_HIDDEN: return "HIDDEN";
+		case SDL_WINDOWEVENT_EXPOSED: return "EXPOSED";
+		case SDL_WINDOWEVENT_MOVED: return "MOVED";
+		case SDL_WINDOWEVENT_RESIZED: return "RESIZED";
+		case SDL_WINDOWEVENT_SIZE_CHANGED: return "SIZE_CHANGED";
+		case SDL_WINDOWEVENT_MINIMIZED: return "MINIMIZED";
+		case SDL_WINDOWEVENT_MAXIMIZED: return "MAXIMIZED";
+		case SDL_WINDOWEVENT_RESTORED: return "RESTORED";
+		case SDL_WINDOWEVENT_ENTER: return "ENTER";
+		case SDL_WINDOWEVENT_LEAVE: return "LEAVE";
+		case SDL_WINDOWEVENT_FOCUS_GAINED: return "FOCUS_GAINED";
+		case SDL_WINDOWEVENT_FOCUS_LOST: return "FOCUS_LOST";
+		case SDL_WINDOWEVENT_CLOSE: return "CLOSE";
+		case SDL_WINDOWEVENT_TAKE_FOCUS: return "TAKE_FOCUS";
+		case SDL_WINDOWEVENT_HIT_TEST: return "HIT_TEST"; 
+		default:
+			sprintf( buf, "EVENT#%i", event );
+			return buf;
+	}
+}
+#endif
+
+
 /*
 ===============
 HandleEvents
@@ -1154,7 +1207,10 @@ void HandleEvents( void )
 				break;
 
 			case SDL_WINDOWEVENT:
-				switch( e.window.event )
+#ifdef DEBUG_EVENTS
+				Com_Printf( "%4i %s\n", e.window.timestamp, eventName( e.window.event ) );
+#endif
+				switch ( e.window.event )
 				{
 					case SDL_WINDOWEVENT_MOVED:
 						if ( gw_active && !gw_minimized && !glw_state.isFullscreen ) {
@@ -1162,12 +1218,18 @@ void HandleEvents( void )
 							Cvar_SetIntegerValue( "vid_ypos", e.window.data2 );
 						}
 						break;
-					case SDL_WINDOWEVENT_MINIMIZED:		re.SyncRender();
-														gw_active = qfalse; gw_minimized = qtrue; break;
+					// window states:
+					case SDL_WINDOWEVENT_HIDDEN:
+					case SDL_WINDOWEVENT_MINIMIZED:		gw_active = qfalse; gw_minimized = qtrue; break;
+					case SDL_WINDOWEVENT_SHOWN:
 					case SDL_WINDOWEVENT_RESTORED:
-					case SDL_WINDOWEVENT_MAXIMIZED:		gw_active = qtrue;  gw_minimized = qfalse; break;
-					case SDL_WINDOWEVENT_FOCUS_LOST:	gw_active = qfalse; break;
-					case SDL_WINDOWEVENT_FOCUS_GAINED:	gw_active = qtrue;  gw_minimized = qfalse; break;
+					case SDL_WINDOWEVENT_MAXIMIZED:		gw_minimized = qfalse; break;
+					// keyboard focus:
+					case SDL_WINDOWEVENT_FOCUS_LOST:	lastKeyDown = 0; Key_ClearStates(); gw_active = qfalse; break;
+					case SDL_WINDOWEVENT_FOCUS_GAINED:	lastKeyDown = 0; Key_ClearStates(); gw_active = qtrue; gw_minimized = qfalse; break;
+					// mouse focus:
+					case SDL_WINDOWEVENT_ENTER: mouse_focus = qtrue; break;
+					case SDL_WINDOWEVENT_LEAVE: if ( glw_state.isFullscreen ) mouse_focus = qfalse; break;
 				}
 				break;
 			default:
@@ -1210,7 +1272,7 @@ void IN_Frame( void )
 		}
 	}
 
-	if ( !gw_active || gw_minimized || in_nograb->integer ) {
+	if ( !gw_active || !mouse_focus || in_nograb->integer ) {
 		IN_DeactivateMouse();
 		return;
 	}

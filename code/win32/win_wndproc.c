@@ -87,6 +87,8 @@ void WIN_DisableHook( void  )
 /*
 ==================
 WIN_EnableHook
+
+Capture PrintScreen and Win* keys
 ==================
 */
 void WIN_EnableHook( void  ) 
@@ -499,11 +501,15 @@ void WIN_Minimize( void ) {
 
 #ifdef FAST_MODE_SWITCH
 	// move game window to background
-	if ( gw_active )
-		SetForegroundWindow( GetDesktopWindow() );
-	// and wait some time before minimizing
-	if ( !uTimerM )
-		uTimerM = SetTimer( g_wv.hWnd, TIMER_M, 50, NULL );
+	if ( glw_state.cdsFullscreen ) {
+		if ( gw_active )
+			SetForegroundWindow( GetDesktopWindow() );
+		// and wait some time before minimizing
+		if ( !uTimerM )
+			uTimerM = SetTimer( g_wv.hWnd, TIMER_M, 50, NULL );
+	} else {
+		ShowWindow( g_wv.hWnd, SW_MINIMIZE );
+	}
 #else
 	ShowWindow( g_wv.hWnd, SW_MINIMIZE );
 #endif
@@ -599,7 +605,8 @@ LRESULT WINAPI MainWndProc( HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM lParam 
 
 		//MSH_MOUSEWHEEL = RegisterWindowMessage( TEXT( "MSWHEEL_ROLLMSG" ) ); 
 
-		WIN_EnableHook();
+		WIN_EnableHook(); // for PrintScreen and Win* keys
+
 		hWinEventHook = SetWinEventHook( EVENT_SYSTEM_SWITCHSTART, EVENT_SYSTEM_SWITCHSTART, NULL, WinEventProc, 
 			0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS );
 		g_wv.hWnd = hWnd;
@@ -608,8 +615,6 @@ LRESULT WINAPI MainWndProc( HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM lParam 
 		gw_minimized = qfalse;
 
 		in_forceCharset = Cvar_Get( "in_forceCharset", "1", CVAR_ARCHIVE_ND );
-
-		IN_Init();
 
 		break;
 #if 0
@@ -633,7 +638,7 @@ LRESULT WINAPI MainWndProc( HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM lParam 
 		hWinEventHook = NULL;
 		g_wv.hWnd = NULL;
 		g_wv.winRectValid = qfalse;
-		gw_minimized = qfalse;
+		//gw_minimized = qfalse;
 		gw_active = qfalse;
 		//WIN_EnableAltTab();
 		break;
