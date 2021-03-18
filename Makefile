@@ -38,8 +38,8 @@ USE_URT_DEMO     = 1
 
 USE_RENDERER_DLOPEN = 1
 
-CNAME            = quake3e-urt-s
-DNAME            = quake3e-urt-s.ded
+CNAME            = urbanterror-slim
+DNAME            = urbanterror-slim.ded
 
 RENDERER_PREFIX  = $(CNAME)
 
