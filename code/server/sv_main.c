@@ -811,6 +811,8 @@ static void SVC_Info( const netadr_t *from ) {
 		Info_SetValueForKey( infostring, "game", gamedir );
 	}
 
+	Info_SetValueForKey(infostring, "modversion", Cvar_VariableString("g_modversion"));
+
 	NET_OutOfBandPrint( NS_SERVER, from, "infoResponse\n%s", infostring );
 }
 
