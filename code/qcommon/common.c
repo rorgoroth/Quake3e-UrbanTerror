@@ -2356,7 +2356,7 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 
 		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i: %s, line: %d (%s)", size, file, line, label);
 #else
-		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i", size);
+		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i - try increasing com_hunkMegs value and restart your game.", size);
 #endif
 	}
 
@@ -2417,7 +2417,7 @@ void *Hunk_AllocateTempMemory( int size ) {
 	size = PAD(size, sizeof(intptr_t)) + sizeof( hunkHeader_t );
 
 	if ( hunk_temp->temp + hunk_permanent->permanent + size > s_hunkTotal ) {
-		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %i", size );
+		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %i - try increasing com_hunkMegs value and restart your game.", size );
 	}
 
 	if ( hunk_temp == &hunk_low ) {
