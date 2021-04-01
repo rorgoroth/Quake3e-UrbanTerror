@@ -193,7 +193,7 @@ static void Con_TellmeButton_f( void ) {
 		chat_playerNum = -1;
 		return;
 	}
-        Com_Printf( "tellmeButton \n" );
+	Com_Printf( "tellmeButton \n" );
 	chat_team = qtrue;
 	Field_Clear( &chatField );
 	chatField.widthInChars = 30;
@@ -202,18 +202,17 @@ static void Con_TellmeButton_f( void ) {
 
 /*
 ================
-Con_TellmeScript_f
+Con_Tellme_f
 ================
 */
-static void Con_TellmeScript_f( void ) {
+static void Con_Tellme_f( void ) {
 	char    buffer[MAX_STRING_CHARS];
 	chat_playerNum = clc.clientNum;
-	 if ( Cmd_Argc() < 2 )
-        {
-                Com_Printf( "usage: tellmescript <string>\n" );
-                return;
-        }
-
+	if ( Cmd_Argc() < 2 )
+	{
+		Com_Printf( "usage: tellme <string>\n" );
+		return;
+	}
 	Com_sprintf( buffer, sizeof( buffer ), "tell %i \"%s\"\n", chat_playerNum, Cmd_ArgsFrom(1) );
 	CL_AddReliableCommand( buffer, qfalse );
 }
@@ -477,7 +476,7 @@ void Con_Init( void )
 	Cmd_AddCommand( "messagemode3", Con_MessageMode3_f );
 	Cmd_AddCommand( "messagemode4", Con_MessageMode4_f );
 	Cmd_AddCommand( "tellmebutton", Con_TellmeButton_f );
-	Cmd_AddCommand( "tellmescript", Con_TellmeScript_f );
+	Cmd_AddCommand( "tellme", Con_Tellme_f );
 }
 
 
@@ -496,7 +495,7 @@ void Con_Shutdown( void )
 	Cmd_RemoveCommand( "messagemode3" );
 	Cmd_RemoveCommand( "messagemode4" );
 	Cmd_RemoveCommand( "tellmebutton" );
-	Cmd_RemoveCommand( "tellmescript" );
+	Cmd_RemoveCommand( "tellme" );
 
 }
 

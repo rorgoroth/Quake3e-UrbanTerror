@@ -526,17 +526,22 @@ static void Message_Key( int key ) {
 	if ( key == K_ENTER || key == K_KP_ENTER )
 	{
 		if ( chatField.buffer[0] && cls.state == CA_ACTIVE ) {
-			if (chat_playerNum != -1 )
 
-				Com_sprintf( buffer, sizeof( buffer ), "tell %i \"%s\"\n", chat_playerNum, chatField.buffer );
+			if (chatField.buffer[0] == '/') {
+				chatField.buffer[0] = ' ';
+				Cbuf_AddText(chatField.buffer);
+				Cbuf_AddText("\n");
+			}
+			else {
+				if (chat_playerNum != -1)
+					Com_sprintf(buffer, sizeof(buffer), "tell %i \"%s\"\n", chat_playerNum, chatField.buffer);
+				else if (chat_team)
+					Com_sprintf(buffer, sizeof(buffer), "say_team \"%s\"\n", chatField.buffer);
+				else
+					Com_sprintf(buffer, sizeof(buffer), "say \"%s\"\n", chatField.buffer);
 
-			else if (chat_team)
-
-				Com_sprintf( buffer, sizeof( buffer ), "say_team \"%s\"\n", chatField.buffer );
-			else
-				Com_sprintf( buffer, sizeof( buffer ), "say \"%s\"\n", chatField.buffer );
-
-			CL_AddReliableCommand( buffer, qfalse );
+				CL_AddReliableCommand(buffer, qfalse);
+			}
 		}
 		Key_SetCatcher( Key_GetCatcher( ) & ~KEYCATCH_MESSAGE );
 		Field_Clear( &chatField );
