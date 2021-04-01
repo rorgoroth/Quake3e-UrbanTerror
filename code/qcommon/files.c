@@ -4532,6 +4532,7 @@ static void FS_ReorderPurePaks( void )
 		for (s = *p_insert_index; s; s = s->next) {
 			// the part of the list before p_insert_index has been sorted already
 			if (s->pack && fs_serverPaks[i] == s->pack->checksum) {
+
 				fs_reordered = qtrue;
 				// move this element to the insert list
 				*p_previous = s->next;
@@ -4681,6 +4682,8 @@ static void FS_Startup( void ) {
 #endif
 
 	// add search path elements in reverse priority order
+	// add here download maps to avoid sv unpure error
+	FS_AddGameDirectory( fs_homepath->string, va("%s/download", fs_gamedirvar->string));
 	if ( fs_steampath->string[0] ) {
 		FS_AddGameDirectory( fs_steampath->string, fs_basegame->string );
 	}
@@ -4694,7 +4697,6 @@ static void FS_Startup( void ) {
 	if ( fs_homepath->string[0] && Q_stricmp( fs_homepath->string, fs_basepath->string ) ) {
 		FS_AddGameDirectory( fs_homepath->string, fs_basegame->string );
 	}
-	FS_AddGameDirectory( fs_homepath->string, va("%s/download", fs_gamedirvar->string));
 
 	// check for additional game folder for mods
 	if ( fs_gamedirvar->string[0] && Q_stricmp( fs_gamedirvar->string, fs_basegame->string ) ) {
@@ -4745,11 +4747,11 @@ static void FS_Startup( void ) {
 	Com_Printf( "%d files in %d pk3 files\n", fs_packFiles, fs_packCount );
 
 	fs_gamedirvar->modified = qfalse; // We just loaded, it's not modified
-
+/*
 	// check original q3a files
 	if ( !Q_stricmp( fs_basegame->string, BASEGAME ) || !Q_stricmp( fs_basegame->string, BASEDEMO ) )
 		FS_CheckIdPaks();
-
+*/
 #ifdef FS_MISSING
 	if (missingFiles == NULL) {
 		missingFiles = Sys_FOpen( "\\missing.txt", "ab" );
@@ -4975,6 +4977,38 @@ const char *FS_LoadedPakNames( void ) {
 }
 #endif
 
+/*
+=====================
+FS_ReferencedPakChecksumsServer
+
+Returns a space separated string containing the checksums of all referenced pk3 files.
+The server will send this to the clients so they can check which files should be auto-downloaded.
+=====================
+*/
+const char *FS_ReferencedPakChecksumsServer( const char *mapname ) {
+        static char     info[BIG_INFO_STRING];
+        searchpath_t *search;
+
+        info[0] = '\0';
+
+        for ( search = fs_searchpaths ; search ; search = search->next ) {
+                // is the element a pak file?
+                if ( search->pack ) {
+                        if ( search->pack->exclude ) {
+                                continue;
+                        }
+                        if ( search->pack->referenced || Q_stricmp( search->pack->pakGamename, fs_basegame->string ) ) {
+				if ( strcmp(mapname,search->pack->pakBasename) == 0 || strstr(search->pack->pakBasename, "zUrT") ) {
+					Q_strcat( info, sizeof( info ), va( "%i ", search->pack->checksum ) );
+				}
+                        }
+                }
+        }
+
+        return info;
+}
+
+
 
 /*
 =====================
@@ -5100,6 +5134,43 @@ qboolean FS_ExcludeReference( void ) {
 	return x;
 }
 
+/*
+=====================
+FS_ReferencedPakNamesServer
+
+Returns a space separated string containing the names of all referenced pk3 files.
+The server will send this to the clients so they can check which files should be auto-downloaded. 
+=====================
+*/
+const char *FS_ReferencedPakNamesServer( const char *mapname ) {
+        static char     info[BIG_INFO_STRING];
+        const searchpath_t *search;
+        const char *pakName;
+        info[0] = '\0';
+
+        // we want to return ALL pk3's from the fs_game path
+        // and referenced one's from baseq3
+	for ( search = fs_searchpaths ; search ; search = search->next ) {
+                // is the element a pak file?
+                if ( search->pack ) {
+                        if ( search->pack->exclude ) {
+                                continue;
+                        }
+                        if ( search->pack->referenced || Q_stricmp( search->pack->pakGamename, fs_basegame->string ) ) {
+				//Com_Printf( "mapname-: |%s|%s|%s|\n", mapname,search->pack->pakBasename,search->pack->pakGamename);
+				if ( strcmp(mapname,search->pack->pakBasename) == 0 || strstr(search->pack->pakBasename, "zUrT") ) {
+					pakName = va( "%s/%s", fs_basegame->string, search->pack->pakBasename );
+					if ( *info != '\0' ) {
+						Q_strcat( info, sizeof( info ), " " );
+					}
+					Q_strcat( info, sizeof( info ), pakName );
+				}
+                        }
+                }
+        }
+
+        return info;
+}
 
 /*
 =====================

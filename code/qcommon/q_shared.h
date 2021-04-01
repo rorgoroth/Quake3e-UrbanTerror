@@ -37,7 +37,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //#define DEFAULT_GAME			"edawn"
 #define DEFAULT_GAME				"q3ut4"
 
-#define BASEGAME				"baseq3"
+#define BASEGAME				"q3ut4"
 #define BASEDEMO				"demoq3"
 #define BASETA					"missionpack"
 #define STEAMPATH_NAME			"Quake 3 Arena"

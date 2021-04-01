@@ -605,17 +605,18 @@ void SV_SpawnServer( const char *mapname, qboolean killBots ) {
 
 	// the server sends these to the clients so they can figure
 	// out which pk3s should be auto-downloaded
-	p = FS_ReferencedPakNames();
+	p = FS_ReferencedPakNamesServer( mapname );
 	if ( FS_ExcludeReference() ) {
 		// \fs_excludeReference may mask our current ui/cgame qvms
 		FS_TouchFileInPak( "vm/cgame.qvm" );
 		FS_TouchFileInPak( "vm/ui.qvm" );
 		// rebuild referenced paks list
-		p = FS_ReferencedPakNames();
+		p = FS_ReferencedPakNamesServer( mapname );
 	}
+	p = FS_ReferencedPakNamesServer( mapname );
 	Cvar_Set( "sv_referencedPakNames", p );
 
-	p = FS_ReferencedPakChecksums();
+	p = FS_ReferencedPakChecksumsServer( mapname );
 	Cvar_Set( "sv_referencedPaks", p );
 
 	Cvar_Set( "sv_paks", "" );

@@ -800,7 +800,9 @@ const char *FS_LoadedPakChecksums( qboolean *overflowed );
 
 qboolean FS_ExcludeReference( void );
 const char *FS_ReferencedPakNames( void );
+const char *FS_ReferencedPakNamesServer( const char *mapname );
 const char *FS_ReferencedPakChecksums( void );
+const char *FS_ReferencedPakChecksumsServer( const char *mapname );
 const char *FS_ReferencedPakPureChecksums( int maxlen );
 // Returns a space separated string containing the checksums of all loaded 
 // AND referenced pk3 files. Servers with sv_pure set will get this string 
