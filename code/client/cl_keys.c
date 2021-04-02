@@ -30,6 +30,7 @@ key up events are sent even if in console mode
 field_t		g_consoleField;
 field_t		chatField;
 qboolean	chat_team;
+qboolean	tell_me=qfalse;
 
 int			chat_playerNum;
 
@@ -518,6 +519,7 @@ static void Message_Key( int key ) {
 	char	buffer[MAX_STRING_CHARS];
 
 	if (key == K_ESCAPE) {
+		tell_me=qfalse;
 		Key_SetCatcher( Key_GetCatcher( ) & ~KEYCATCH_MESSAGE );
 		Field_Clear( &chatField );
 		return;
@@ -525,6 +527,7 @@ static void Message_Key( int key ) {
 
 	if ( key == K_ENTER || key == K_KP_ENTER )
 	{
+		tell_me=qfalse;
 		if ( chatField.buffer[0] && cls.state == CA_ACTIVE ) {
 
 			if (chatField.buffer[0] == '/') {

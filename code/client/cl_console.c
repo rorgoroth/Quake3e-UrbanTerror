@@ -86,6 +86,7 @@ char *consoleNames[] = {
 
 
 extern  qboolean    chat_team;
+extern  qboolean    tell_me;
 extern  int         chat_playerNum;
 
 cvar_t		*con_conspeed;
@@ -194,7 +195,7 @@ static void Con_TellmeButton_f( void ) {
 		return;
 	}
 	Com_Printf( "tellmeButton \n" );
-	chat_team = qtrue;
+	tell_me = qtrue;
 	Field_Clear( &chatField );
 	chatField.widthInChars = 30;
 	Key_SetCatcher( Key_GetCatcher() ^ KEYCATCH_MESSAGE );
@@ -821,16 +822,21 @@ void Con_DrawNotify( void )
 	{
 		// rescale to virtual 640x480 space
 		v /= cls.glconfig.vidHeight / 480.0;
-
-		if (chat_team)
+		if (tell_me)
 		{
-			SCR_DrawBigString( SMALLCHAR_WIDTH, v, "say_team:", 1.0f, qfalse );
-			skip = 10;
-		}
-		else
-		{
-			SCR_DrawBigString( SMALLCHAR_WIDTH, v, "say:", 1.0f, qfalse );
-			skip = 5;
+			SCR_DrawBigString( SMALLCHAR_WIDTH, v, "tell_me:", 1.0f, qfalse );
+                        skip = 9;
+		} else	{
+			if (chat_team)
+			{
+				SCR_DrawBigString( SMALLCHAR_WIDTH, v, "say_team:", 1.0f, qfalse );
+				skip = 10;
+			}
+			else
+			{
+				SCR_DrawBigString( SMALLCHAR_WIDTH, v, "say:", 1.0f, qfalse );
+				skip = 5;
+			}
 		}
 
 		Field_BigDraw( &chatField, skip * BIGCHAR_WIDTH, v,
