@@ -1254,7 +1254,7 @@ static void SV_ConSay_f( void ) {
 		return;
 	}
 
-	strcpy( text, "console: " );
+	strcpy( text, sv_sayprefix->string );
 	p = Cmd_ArgsFrom( 1 );
 
 	if ( strlen( p ) > 1000 ) {
@@ -1298,7 +1298,7 @@ static void SV_ConTell_f( void ) {
 		return;
 	}
 
-	strcpy( text, S_COLOR_MAGENTA "console: " );
+	strcpy( text, sv_tellprefix->string );
 	p = Cmd_ArgsFrom( 2 );
 
 	if ( strlen( p ) > 1000 ) {

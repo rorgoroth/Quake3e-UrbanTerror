@@ -68,6 +68,9 @@ serverBan_t serverBans[SERVER_MAXBANS];
 int serverBansCount = 0;
 #endif
 
+cvar_t	*sv_tellprefix;
+cvar_t	*sv_sayprefix;
+
 /*
 =============================================================================
 

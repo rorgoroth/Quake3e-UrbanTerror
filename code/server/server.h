@@ -342,6 +342,9 @@ extern	serverBan_t serverBans[SERVER_MAXBANS];
 extern	int serverBansCount;
 #endif
 
+extern	cvar_t	*sv_sayprefix;
+extern	cvar_t	*sv_tellprefix;
+
 //===========================================================
 
 //
