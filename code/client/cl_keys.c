@@ -527,10 +527,9 @@ static void Message_Key( int key ) {
 
 	if ( key == K_ENTER || key == K_KP_ENTER )
 	{
-		tell_me=qfalse;
 		if ( chatField.buffer[0] && cls.state == CA_ACTIVE ) {
 
-			if (chatField.buffer[0] == '/') {
+			if (chatField.buffer[0] == '/' && tell_me==qtrue) {
 				chatField.buffer[0] = ' ';
 				Cbuf_AddText(chatField.buffer);
 				Cbuf_AddText("\n");
@@ -546,6 +545,7 @@ static void Message_Key( int key ) {
 				CL_AddReliableCommand(buffer, qfalse);
 			}
 		}
+		tell_me=qfalse;
 		Key_SetCatcher( Key_GetCatcher( ) & ~KEYCATCH_MESSAGE );
 		Field_Clear( &chatField );
 		return;
