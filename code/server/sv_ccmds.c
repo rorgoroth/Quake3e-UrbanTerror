@@ -95,6 +95,48 @@ client_t *SV_GetPlayerByHandle( void ) {
 	return NULL;
 }
 
+/*
+==================
+SV_GetPlayerByHandleParam
+==================
+*/
+static client_t *SV_GetPlayerByHandleParam(char *s)
+{
+
+    client_t *cl;
+    int i, plid;
+    char cleanName[64];
+
+    if(!com_sv_running->integer) {
+        return NULL;
+    }
+
+    for(i = 0; isdigit(s[i]); i++);
+
+    if(!s[i]) {
+        plid = atoi(s);
+        if(plid >= 0 && plid < sv_maxclients->integer) {
+            cl = &svs.clients[plid];
+            if(cl->state) return cl;
+        }
+    }
+    for(i = 0, cl = svs.clients; i < sv_maxclients->integer; i++, cl++) {
+        if(!cl->state) {
+            continue;
+        }
+        if(!Q_stricmp(cl->name, s)) {
+            return cl;
+        }
+        Q_strncpyz(cleanName, cl->name, sizeof(cleanName));
+        Q_CleanStr(cleanName);
+        if(!Q_stricmp(cleanName, s)) {
+            return cl;
+        }
+    }
+
+    Com_Printf("Player %s is not on the server.\n", s);
+    return NULL;
+}
 
 /*
 ==================
@@ -1438,6 +1480,85 @@ static void SV_Locations_f( void ) {
 	SV_PrintLocations_f( NULL );
 }
 
+
+/*
+==================
+SV_Teleport_f
+
+Teleport a player to the specified coordinates
+==================
+*/
+static void SV_Teleport_f(void)
+{
+
+    client_t *cl, *target;
+    playerState_t *ps, *ts;
+
+    // make sure server is running
+    if(!com_sv_running->integer) {
+        Com_Printf("Server is not running.\n");
+        return;
+    }
+
+    if((Cmd_Argc() != 2) && (Cmd_Argc() != 3) && (Cmd_Argc() != 5)) {
+        Com_Printf("Usage: teleport <player> [<x> <y> <z> | <player>]\n");
+        return;
+    }
+
+    cl = SV_GetPlayerByHandle();
+    if(!cl) {
+        Com_Printf("Unable to find specified player.\n");
+        return;
+    }
+
+    ps = SV_GameClientNum(cl - svs.clients);
+
+    if(Cmd_Argc() == 2) { // printing player's coordinates
+        Com_Printf("Position: %f %f %f\n", ps->origin[0], ps->origin[1], ps->origin[2]);
+        return;
+    } else if(Cmd_Argc() == 3) { // teleport a player to another one
+
+        target = SV_GetPlayerByHandleParam(Cmd_Argv(2));
+        if(!target) {
+            Com_Printf("Unable to find target player.\n");
+            return;
+        }
+
+        ts = SV_GameClientNum(target - svs.clients);
+        VectorCopy(ts->origin, ps->origin);
+
+        // stopping just the client who got moved
+        VectorClear(ps->velocity);
+
+        if(sv_gotoMsgBigtext->integer >= 1) {
+            // displaying the sentence as a personal bigtext
+            SV_SendServerCommand(cl, "cp \"^4You have been teleported to ^7%s\n\"", Q_CleanStr(target->name));
+            SV_SendServerCommand(target, "cp \"^7%s ^4has been teleported to you\n\"", Q_CleanStr(cl->name));
+        } else {
+            // display the sentence as a server message
+            SV_SendServerCommand(cl, "print \"^4You have been teleported to ^7%s\n\"", Q_CleanStr(target->name));
+            SV_SendServerCommand(target, "print \"^7%s ^4has been teleported to you\n\"", Q_CleanStr(cl->name));
+        }
+
+    } else if(Cmd_Argc() == 5) { // teleport a player to the specified x, y, z coordinates
+
+        ps->origin[0] = atof(Cmd_Argv(2));
+        ps->origin[1] = atof(Cmd_Argv(3));
+        ps->origin[2] = atof(Cmd_Argv(4));
+
+        VectorClear(ps->velocity);
+
+        if(sv_gotoMsgBigtext->integer >= 1) {
+            // displaying the sentence as a personal bigtext
+            SV_SendServerCommand(cl, "cp \"^4You have been teleported\n\"");
+        } else {
+            // display the sentence as a server message
+            SV_SendServerCommand(cl, "print \"^4You have been teleported\n\"");
+        }
+    }
+}
+
+
 //===========================================================
 
 /*
@@ -1507,6 +1628,9 @@ void SV_AddOperatorCommands( void ) {
 #endif
 	Cmd_AddCommand( "filter", SV_AddFilter_f );
 	Cmd_AddCommand( "filtercmd", SV_AddFilterCmd_f );
+
+        Cmd_AddCommand("teleport", SV_Teleport_f);
+
 }
 
 
