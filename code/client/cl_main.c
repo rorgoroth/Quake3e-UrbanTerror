@@ -4252,7 +4252,7 @@ void CL_Init( void ) {
 	//Cbuf_Execute ();
 
 	Cvar_Set( "cl_running", "1" );
-#ifdef USE_MD5
+#ifdef USE_Q3KEY
 	CL_GenerateQKey();
 #endif
 	Cvar_Get( "cl_guid", "", CVAR_USERINFO | CVAR_ROM | CVAR_PROTECTED );
