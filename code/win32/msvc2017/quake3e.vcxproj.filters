@@ -112,6 +112,9 @@
     <ClCompile Include="..\..\client\snd_dma.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\client\snd_dmaHD.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\client\snd_main.c">
       <Filter>Source Files</Filter>
     </ClCompile>

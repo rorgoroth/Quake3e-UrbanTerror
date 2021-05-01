@@ -303,6 +303,7 @@
     <ClCompile Include="..\..\client\snd_codec.c" />
     <ClCompile Include="..\..\client\snd_codec_wav.c" />
     <ClCompile Include="..\..\client\snd_dma.c" />
+    <ClCompile Include="..\..\client\snd_dmaHD.c" />
     <ClCompile Include="..\..\client\snd_main.c" />
     <ClCompile Include="..\..\client\snd_mem.c" />
     <ClCompile Include="..\..\client\snd_mix.c" />

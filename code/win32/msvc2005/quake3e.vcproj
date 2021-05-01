@@ -524,6 +524,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\client\snd_dmaHD.c"
+				>
+			</File>
+			<File
 				RelativePath="..\..\client\snd_main.c"
 				>
 			</File>
