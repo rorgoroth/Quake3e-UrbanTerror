@@ -61,7 +61,7 @@ jobs:
 
     - name: Build
       run: |
-        make ${{ matrix.rule }} -j 8 ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_RENDERER_DLOPEN=0 USE_SDL=0 USE_VULKAN=1 CNAME=quake3e-vulkan BUILD_SERVER=0
+        make ${{ matrix.rule }} -j 8 ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_RENDERER_DLOPEN=0 USE_SDL=0 USE_VULKAN=1 CNAME=urbanterror-slim-vulkan BUILD_SERVER=0
         make clean ARCH=${{ matrix.arch }}
         make ${{ matrix.rule }} -j 8 ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_RENDERER_DLOPEN=0 USE_SDL=0 USE_VULKAN_API=0
 
@@ -107,22 +107,22 @@ jobs:
       run: |
         mkdir bin
 
-        msbuild code\win32\msvc2017\quake3e-ded.vcxproj -m -p:TargetName=quake3e.ded,Configuration=${{ matrix.config }},Platform=${{ matrix.platform }}
+        msbuild code\win32\msvc2017\quake3e-ded.vcxproj -m -p:TargetName=urbanterror-slim.ded,Configuration=${{ matrix.config }},Platform=${{ matrix.platform }}
 
-        copy code\win32\msvc2017\output\quake3e.ded.exe bin\quake3e.ded${{ matrix.suffix }}.exe
+        copy code\win32\msvc2017\output\urbanterror-slim.ded.exe bin\urbanterror-slim.ded${{ matrix.suffix }}.exe
 
         msbuild code\win32\msvc2017\renderer.vcxproj -m -p:Configuration=${{ matrix.config }},Platform=${{ matrix.platform }}
-        msbuild code\win32\msvc2017\quake3e.vcxproj -m -p:TargetName=quake3e,Configuration=${{ matrix.config }},Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0
+        msbuild code\win32\msvc2017\quake3e.vcxproj -m -p:TargetName=urbanterror-slim,Configuration=${{ matrix.config }},Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0
 
-        copy code\win32\msvc2017\output\quake3e.exe bin\quake3e${{ matrix.suffix }}.exe
+        copy code\win32\msvc2017\output\urbanterror-slim.exe bin\urbanterror-slim${{ matrix.suffix }}.exe
 
         msbuild code\win32\msvc2017\renderer.vcxproj -t:Clean -m -p:Configuration=${{ matrix.config }},Platform=${{ matrix.platform }}
-        msbuild code\win32\msvc2017\quake3e.vcxproj -t:Clean -m -p:TargetName=quake3e,Configuration=${{ matrix.config }},Platform=${{ matrix.platform }}
+        msbuild code\win32\msvc2017\quake3e.vcxproj -t:Clean -m -p:TargetName=urbanterror-slim,Configuration=${{ matrix.config }},Platform=${{ matrix.platform }}
 
         msbuild code\win32\msvc2017\renderervk.vcxproj -m -p:Configuration=${{ matrix.config }},Platform=${{ matrix.platform }}
-        msbuild code\win32\msvc2017\quake3e.vcxproj -m -p:TargetName=quake3e,Configuration=${{ matrix.config }},Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0
+        msbuild code\win32\msvc2017\quake3e.vcxproj -m -p:TargetName=urbanterror-slim,Configuration=${{ matrix.config }},Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0
 
-        copy code\win32\msvc2017\output\quake3e.exe bin\quake3e-vulkan${{ matrix.suffix }}.exe
+        copy code\win32\msvc2017\output\urbanterror-slim.exe bin\urbanterror-slim-vulkan${{ matrix.suffix }}.exe
 
     - uses: actions/upload-artifact@v2
       if: ${{ matrix.config == 'Release' }}
@@ -167,7 +167,7 @@ jobs:
 
     - name: Build
       run: |
-        make ${{ matrix.rule }} -j 8 ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_RENDERER_DLOPEN=0 ${{ matrix.use_sdl }} USE_VULKAN=1 CNAME=quake3e-vulkan BUILD_SERVER=0
+        make ${{ matrix.rule }} -j 8 ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_RENDERER_DLOPEN=0 ${{ matrix.use_sdl }} USE_VULKAN=1 CNAME=urbanterror-slim-vulkan BUILD_SERVER=0
         make clean ARCH=${{ matrix.arch }} 
         make ${{ matrix.rule }} -j 8 ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_RENDERER_DLOPEN=0 ${{ matrix.use_sdl }} USE_VULKAN_API=0
 
@@ -210,7 +210,7 @@ jobs:
           apt-get -qq update
           apt-get install -y make gcc g++
           apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound-dev
-          make ${{ matrix.rule }} -j 4 ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_RENDERER_DLOPEN=0 USE_SDL=0 USE_VULKAN=1 CNAME=quake3e-vulkan BUILD_SERVER=0
+          make ${{ matrix.rule }} -j 4 ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_RENDERER_DLOPEN=0 USE_SDL=0 USE_VULKAN=1 CNAME=urbanterror-slim-vulkan BUILD_SERVER=0
           make clean ARCH=${{ matrix.arch }} 
           make ${{ matrix.rule }} -j 4 ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_RENDERER_DLOPEN=0 USE_SDL=0 USE_VULKAN_API=0
 
@@ -246,7 +246,7 @@ jobs:
 
     - name: Build
       run: |
-        make ${{ matrix.rule }} -j 4 CC=${{ matrix.cc }} DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=0 USE_VULKAN=1 CNAME=quake3e-vulkan BUILD_SERVER=0
+        make ${{ matrix.rule }} -j 4 CC=${{ matrix.cc }} DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=0 USE_VULKAN=1 CNAME=urbanterror-slim-vulkan BUILD_SERVER=0
         make clean ARCH=${{ matrix.arch }} 
         make ${{ matrix.rule }} -j 4 CC=${{ matrix.cc }} DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=0 USE_VULKAN_API=0
 
@@ -268,16 +268,16 @@ jobs:
 
       - name: Create binary archives
         run: |
-          7z a -r quake3e-linux-x86.zip           ./linux-x86/*
-          7z a -r quake3e-linux-x86_64.zip         ./linux-x86_64/*
-          7z a -r quake3e-windows-mingw-x86.zip    ./windows-mingw-x86/*
-          7z a -r quake3e-windows-mingw-x86_64.zip ./windows-mingw-x86_64/*
-          7z a -r quake3e-windows-msvc-x86.zip     ./windows-msvc-x86/*
-          7z a -r quake3e-windows-msvc-x86_64.zip  ./windows-msvc-x86_64/*
-          7z a -r quake3e-windows-msvc-arm64.zip   ./windows-msvc-arm64/*
-          7z a -r quake3e-macos-x86_64.zip         ./macos-x86_64/*
-#         7z a -r quake3e-linux-aarch64.zip  ./linux-aarch64/*
-#         7z a -r quake3e-linux-armv7.zip    ./linux-armv7/*
+          7z a -r urt-slim-linux-x86.zip           ./linux-x86/*
+          7z a -r urt-slim-linux-x86_64.zip         ./linux-x86_64/*
+          7z a -r urt-slim-windows-mingw-x86.zip    ./windows-mingw-x86/*
+          7z a -r urt-slim-windows-mingw-x86_64.zip ./windows-mingw-x86_64/*
+          7z a -r urt-slim-windows-msvc-x86.zip     ./windows-msvc-x86/*
+          7z a -r urt-slim-windows-msvc-x86_64.zip  ./windows-msvc-x86_64/*
+          7z a -r urt-slim-windows-msvc-arm64.zip   ./windows-msvc-arm64/*
+          7z a -r urt-slim-macos-x86_64.zip         ./macos-x86_64/*
+#         7z a -r urt-slim-linux-aarch64.zip  ./linux-aarch64/*
+#         7z a -r urt-slim-linux-armv7.zip    ./linux-armv7/*
 
       - name: Create latest build
         uses: marvinpinto/action-automatic-releases@latest
@@ -298,34 +298,34 @@ jobs:
       matrix:
         include:
           # - artifact_dir: linux-aarch64
-          #   artifact_name: quake3e-linux-aarch64.zip
+          #   artifact_name: urt-slim-linux-aarch64.zip
 
           # - artifact_dir: linux-armv7
-          #  artifact_name: quake3e-linux-armv7.zip
+          #  artifact_name: urt-slim-linux-armv7.zip
 
           - artifact_dir: linux-x86
-            artifact_name: quake3e-linux-x86.zip
+            artifact_name: urt-slim-linux-x86.zip
 
           - artifact_dir: linux-x86_64
-            artifact_name: quake3e-linux-x86_64.zip
+            artifact_name: urt-slim-linux-x86_64.zip
 
           - artifact_dir: windows-mingw-x86
-            artifact_name: quake3e-windows-mingw-x86.zip
+            artifact_name: urt-slim-windows-mingw-x86.zip
 
           - artifact_dir: windows-mingw-x86_64
-            artifact_name: quake3e-windows-mingw-x86_64.zip
+            artifact_name: urt-slim-windows-mingw-x86_64.zip
 
           - artifact_dir: windows-msvc-x86
-            artifact_name: quake3e-windows-msvc-x86.zip
+            artifact_name: urt-slim-windows-msvc-x86.zip
 
           - artifact_dir: windows-msvc-x86_64
-            artifact_name: quake3e-windows-msvc-x86_64.zip
+            artifact_name: urt-slim-windows-msvc-x86_64.zip
 
           - artifact_dir: windows-msvc-arm64
-            artifact_name: quake3e-windows-msvc-arm64.zip
+            artifact_name: urt-slim-windows-msvc-arm64.zip
 
           - artifact_dir: macos-x86_64
-            artifact_name: quake3e-macos-x86_64.zip
+            artifact_name: urt-slim-macos-x86_64.zip
 
     steps:
       - name: Download Artifacts
