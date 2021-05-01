@@ -1,13 +1,19 @@
-# Quake3e
+# Urbanterror Slim
 
-Modded for Urbanterror ( beta - no dmahd ).
+This is a Modded Quake3e with minimal changes to be able to run Urbanterror. Has better performance than stock binary. If you have fps drops with stock binary, try it. 
 
-Compile and copy to your /opt/urbanterror/ \
-Then run: ./urbanterror-slim.x64
+Latest builds: https://github.com/omg-urt/urbanterror-slim/releases
 
-If you have problems with mouse, change in_mouse to 1 and restart.
+Download and extract to your /opt/urbanterror or where you have the stock urbanterror binary. Then run.
 
-This is a modern Quake III Arena engine aimed to be fast, secure and compatible with all existing Q3A mods.
+Some notes:
+
+If you have problems with mouse, open console and change in_mouse to 1, then restart game.\
+This binary is only for running urbanterror. Don't try to run other mods of quake3 on it.
+
+For more info on quake3e read below. 
+
+This is a modern  Quake III Arena engine aimed to be fast, secure and compatible with all existing Q3A mods.
 It is based on last non-SDL source dump of [ioquake3](https://github.com/ioquake/ioq3) with latest upstream fixes applied.
 
 Go to [Releases](../../releases) section to download latest binaries for your platform or follow [Build Instructions](#build-instructions)
