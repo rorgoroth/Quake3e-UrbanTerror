@@ -715,6 +715,8 @@ extern void S_TransferPaintBuffer(int endtime, byte* buffer, portable_samplepair
 
 void dmaHD_PaintChannels( int endtime ) 
 {
+	static qboolean muted = qfalse;
+	byte	*buffer;
 	int 	i;
 	int 	end;
 	channel_t *ch;
@@ -730,6 +732,24 @@ void dmaHD_PaintChannels( int endtime )
 		(s_muted->integer) ? 0 : 
 #endif
 		s_volume->value*256;
+
+
+	if ( (!gw_active && !gw_minimized && s_muteWhenUnfocused->integer) || (gw_minimized && s_muteWhenMinimized->integer) ) {
+		buffer = dma_buffer2;
+		if ( !muted ) {
+			// switching to muted, clear hardware buffer
+			Com_Memset( dma.buffer, 0, dma.samples * dma.samplebits/8 );
+		}
+		muted = qtrue;
+	} else {
+		buffer = dma.buffer;
+		// switching to unmuted, clear both buffers
+		if ( muted ) {
+			Com_Memset( dma.buffer, 0, dma.samples * dma.samplebits/8 );
+			Com_Memset( dma_buffer2, 0, dma.samples * dma.samplebits/8 );
+		}
+		muted = qfalse;
+	}
 
 	while ( s_paintedtime < endtime ) 
 	{
@@ -829,7 +849,7 @@ void dmaHD_PaintChannels( int endtime )
 		//       accordingly.
  
 		// transfer out according to DMA format
-		S_TransferPaintBuffer( end, dma.buffer, dmaHD_paintbuffer );
+		S_TransferPaintBuffer( end, buffer, dmaHD_paintbuffer );
 		s_paintedtime = end;
 	}
 }
