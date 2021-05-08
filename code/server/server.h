@@ -346,6 +346,7 @@ extern	cvar_t	*sv_sayprefix;
 extern	cvar_t	*sv_tellprefix;
 
 extern	cvar_t *sv_gotoMsgBigtext;
+extern  cvar_t  *sv_nofallDamage;
 
 //===========================================================
 
