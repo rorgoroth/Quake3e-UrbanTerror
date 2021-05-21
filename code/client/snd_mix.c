@@ -395,7 +395,8 @@ void S_TransferPaintBuffer( int endtime, byte *buffer, portable_samplepair_t inp
 	}
 
 	if ( CL_VideoRecording() ) {
-		count = (endtime - s_paintedtime) * dma.channels;
+		//count = (endtime - s_paintedtime) * dma.channels;
+		count = (clc.aviFrameEndTime - s_paintedtime) * dma.channels;
 		out_idx = s_paintedtime * dma.channels % dma.samples;
 		while ( count > 0 ) {
 			int n = count;
