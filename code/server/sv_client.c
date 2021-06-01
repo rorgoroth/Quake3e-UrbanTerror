@@ -2101,6 +2101,12 @@ void SV_ClientThink (client_t *cl, usercmd_t *cmd) {
 	}
 
 	VM_Call( gvm, 1, GAME_CLIENT_THINK, cl - svs.clients );
+
+	playerState_t	*ps;
+ 	ps = SV_GameClientNum( cl - svs.clients );
+	if(sv_infiniteStamina->integer)	{
+		ps->stats[0] = ps->stats[6] * 300;
+	}
 }
 
 

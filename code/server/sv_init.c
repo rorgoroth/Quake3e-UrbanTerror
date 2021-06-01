@@ -776,6 +776,7 @@ void SV_Init( void )
 
 	sv_gotoMsgBigtext = Cvar_Get("sv_gotoMsgBigtext", "0", CVAR_ARCHIVE_ND );
 	sv_nofallDamage = Cvar_Get("sv_nofallDamage", "0", CVAR_ARCHIVE_ND );
+	sv_infiniteStamina = Cvar_Get ("sv_infiniteStamina", "0", CVAR_ARCHIVE_ND );
 	
 	// initialize bot cvars so they are listed and can be set before loading the botlib
 	SV_BotInitCvars();

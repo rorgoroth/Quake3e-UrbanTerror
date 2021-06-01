@@ -72,6 +72,7 @@ cvar_t	*sv_tellprefix;
 cvar_t	*sv_sayprefix;
 cvar_t	*sv_gotoMsgBigtext;
 cvar_t	*sv_nofallDamage;
+cvar_t  *sv_infiniteStamina;
 
 /*
 =============================================================================
