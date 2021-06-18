@@ -1614,8 +1614,8 @@ static uint32_t get_comp( opcode_t op )
 		case OP_GEU: return HS;
 		case OP_EQF: return EQ;
 		case OP_NEF: return NE;
-		case OP_LTF: return LT;
-		case OP_LEF: return LE;
+		case OP_LTF: return MI;
+		case OP_LEF: return LS;
 		case OP_GTF: return GT;
 		case OP_GEF: return GE;
 		default: DROP( "unexpected op %i", op );
@@ -2212,8 +2212,9 @@ static qboolean ConstOptimize( vm_t *vm )
 		}
 		flush_volatile();
 		if ( ci->value == ~TRAP_SIN || ci->value == ~TRAP_COS ) {
-
-			sx[0] = alloc_sx( S0 | TEMP );
+#if (__ARM_PCS_VFP)
+			// -mfloat-abi=hard
+			sx[0] = S0; mask_sx( sx[0] );
 			rx[0] = alloc_rx( R12 );
 			emit(VLDRai(sx[0], rPROCBASE, 8)); // s0 = [procBase + 8]
 			if ( ci->value == ~TRAP_SIN )
@@ -2221,8 +2222,21 @@ static qboolean ConstOptimize( vm_t *vm )
 			else
 				emit_MOVRxi(rx[0], (intptr_t)cosf);
 			emit(BLX(rx[0]));
-			store_sx_opstack( sx[0] );         // *opstack = s0
 			unmask_rx( rx[0] );
+			store_sx_opstack( sx[0] );         // *opstack = s0
+#else
+			// -mfloat-abi=soft or softfp
+			rx[0] = R0; mask_rx( rx[0] );
+			rx[1] = R12; mask_rx( rx[1] );
+			emit(LDRai(rx[0], rPROCBASE, 8));  // r0 = [procBase + 8]
+			if ( ci->value == ~TRAP_SIN )
+				emit_MOVRxi(rx[1], (intptr_t)sinf);
+			else
+				emit_MOVRxi(rx[1], (intptr_t)cosf);
+			emit(BLX(rx[1]));
+			unmask_rx( rx[1] );
+			store_rx_opstack( rx[0] );         // *opstack = r0
+#endif
 			ip += 1; // OP_CALL
 			return qtrue;
 		}

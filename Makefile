@@ -29,7 +29,8 @@ BUILD_SERVER     = 1
 USE_SDL          = 1
 USE_CURL         = 1
 USE_LOCAL_HEADERS= 0
-USE_VULKAN       = 0
+USE_VULKAN       = 1
+USE_OPENGL       = 1
 USE_OPENGL2      = 0
 USE_SYSTEM_JPEG  = 0
 USE_VULKAN_API   = 1
@@ -43,6 +44,10 @@ CNAME            = urbanterror-slim
 DNAME            = urbanterror-slim.ded
 
 RENDERER_PREFIX  = $(CNAME)
+
+# valid options: opengl, vulkan, opengl2
+RENDERER_DEFAULT = opengl
+
 
 ifeq ($(V),1)
 echo_cmd=@:
@@ -150,12 +155,28 @@ ifndef USE_CURL_DLOPEN
   endif
 endif
 
-ifneq ($(USE_RENDERER_DLOPEN),0)
-USE_VULKAN=1
+ifeq ($(USE_RENDERER_DLOPEN),0)
+  ifeq ($(RENDERER_DEFAULT),opengl)
+    USE_OPENGL=1
+    USE_OPENGL2=0
+    USE_VULKAN=0
+    USE_VULKAN_API=0
+  endif
+  ifeq ($(RENDERER_DEFAULT),opengl2)
+    USE_OPENGL=0
+    USE_OPENGL2=1
+    USE_VULKAN=0
+    USE_VULKAN_API=0
+  endif
+  ifeq ($(RENDERER_DEFAULT),vulkan)
+    USE_OPENGL=0
+    USE_OPENGL2=0
+    USE_VULKAN=1
+  endif
 endif
 
 ifneq ($(USE_VULKAN),0)
-USE_VULKAN_API=1
+  USE_VULKAN_API=1
 endif
 
 
@@ -239,6 +260,7 @@ endif
 ifneq ($(USE_RENDERER_DLOPEN),0)
   BASE_CFLAGS += -DUSE_RENDERER_DLOPEN
   BASE_CFLAGS += -DRENDERER_PREFIX=\\\"$(RENDERER_PREFIX)\\\"
+  BASE_CFLAGS += -DRENDERER_DEFAULT="$(RENDERER_DEFAULT)"
 endif
 
 ifeq ($(USE_AUTH),1)
@@ -517,9 +539,15 @@ endif
 ifneq ($(BUILD_CLIENT),0)
   TARGETS += $(B)/$(TARGET_CLIENT)
   ifneq ($(USE_RENDERER_DLOPEN),0)
-    TARGETS += $(B)/$(TARGET_REND1)
-    TARGETS += $(B)/$(TARGET_REND2)
-    TARGETS += $(B)/$(TARGET_RENDV)
+    ifeq ($(USE_OPENGL),1)
+      TARGETS += $(B)/$(TARGET_REND1)
+    endif
+    ifeq ($(USE_OPENGL2),1)
+      TARGETS += $(B)/$(TARGET_REND2)
+    endif
+    ifeq ($(USE_VULKAN),1)
+      TARGETS += $(B)/$(TARGET_RENDV)
+    endif
   endif
 endif
 
@@ -983,9 +1011,11 @@ endif
 ifeq ($(HAVE_VM_COMPILED),true)
   ifeq ($(ARCH),x86)
     Q3OBJ += $(B)/client/vm_x86.o
+    Q3OBJ += $(B)/client/vm_x86_ng.o
   endif
   ifeq ($(ARCH),x86_64)
     Q3OBJ += $(B)/client/vm_x86.o
+    Q3OBJ += $(B)/client/vm_x86_ng.o
   endif
   ifeq ($(ARCH),arm)
     Q3OBJ += $(B)/client/vm_armv7l.o
@@ -1169,9 +1199,11 @@ endif
 ifeq ($(HAVE_VM_COMPILED),true)
   ifeq ($(ARCH),x86)
     Q3DOBJ += $(B)/ded/vm_x86.o
+    Q3DOBJ += $(B)/ded/vm_x86_ng.o
   endif
   ifeq ($(ARCH),x86_64)
     Q3DOBJ += $(B)/ded/vm_x86.o
+    Q3DOBJ += $(B)/ded/vm_x86_ng.o
   endif
   ifeq ($(ARCH),arm)
     Q3DOBJ += $(B)/ded/vm_armv7l.o
