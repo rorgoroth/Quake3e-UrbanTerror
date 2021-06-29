@@ -63,7 +63,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define NUM_COMPRESSIONS 2
 #define FJUMP_THRESHOLD 48
 #else
-#define NUM_PASSES       2
+#define NUM_PASSES       1
 #endif
 
 #define DYN_ALLOC_RX
@@ -397,7 +397,6 @@ static void emit_modrm_base_offset( uint32_t reg, uint32_t base, int32_t offset 
 		Emit4( offset );
 	}
 }
-
 
 // reg <-> [base + index*scale + disp]
 static void emit_modrm_base_index( uint32_t reg, uint32_t base, uint32_t index, int scale, int32_t disp )
@@ -941,6 +940,11 @@ static void emit_nop( void )
 	Emit1( 0x90 );
 }
 
+static void emit_brk( void )
+{
+	Emit1( 0xCC );
+}
+
 enum {
 	X_ADD,
 	X_OR,
@@ -1321,6 +1325,7 @@ typedef struct reg_s {
 	uint32_t ip; // ip of last reference
 	int refcnt;  // reference counter
 	int zext;	 // zero-extension needed
+	int size;
 } reg_t;
 
 static int opstack;
@@ -1346,21 +1351,43 @@ static qboolean is_masked_rx( const uint32_t reg )
 
 static void set_rx_var( uint32_t reg, const var_addr_t *v, reg_value_t type, int zext ) {
 #ifdef LOAD_OPTIMIZE
-	if ( reg < ARRAY_LEN( rx_regs ) && type != RTYPE_UNUSED ) {
+	if ( reg < ARRAY_LEN( rx_regs ) ) {
 		uint32_t i;
+		int size;
 		reg_t *r;
+
+		switch ( type ) {
+			case RTYPE_VAR4: size = 4; break;
+			case RTYPE_VAR2: size = 2; break;
+			case RTYPE_VAR1: size = 1; break;
+			default: return;
+		}
+
+		// wipe ALL types of overlapping variables
 		for ( i = 0; i < ARRAY_LEN( rx_regs ); i++ ) {
 			r = &rx_regs[i];
-			if ( r->type >= RTYPE_VAR4 && r->u.var.base == v->base && r->u.var.addr == v->addr ) {
-				r->type = RTYPE_UNUSED;
+			if ( r->type >= RTYPE_VAR4 && r->u.var.base == v->base ) {
+				if ( v->addr < r->u.var.addr + r->size && v->addr + size > r->u.var.addr ) {
+					r->type = RTYPE_UNUSED;
+				}
 			}
 		}
+		for ( i = 0; i < ARRAY_LEN( sx_regs ); i++ ) {
+			r = &sx_regs[i];
+			if ( r->type >= RTYPE_VAR4 && r->u.var.base == v->base ) {
+				if ( v->addr < r->u.var.addr + r->size && v->addr + size > r->u.var.addr ) {
+					r->type = RTYPE_UNUSED;
+				}
+			}
+		}
+
 		r = &rx_regs[ reg ];
 		r->type = type;
 		r->u.var = *v;
 		r->refcnt = 1;
 		r->ip = ip;
 		r->zext = zext;
+		r->size = size;
 	}
 #endif
 }
@@ -1370,19 +1397,34 @@ static void set_sx_var( uint32_t reg, const var_addr_t *v ) {
 #ifdef LOAD_OPTIMIZE
 	if ( reg < ARRAY_LEN( sx_regs ) ) {
 		uint32_t i;
+		int size = 4;
 		reg_t *r;
-		for ( i = 0; i < ARRAY_LEN( sx_regs ); i++ ) {
-			r = &sx_regs[i];
-			if ( r->type >= RTYPE_VAR4 && r->u.var.base == v->base && r->u.var.addr == v->addr ) {
-				r->type = RTYPE_UNUSED;
+
+		// wipe ALL types of overlapping variables
+		for ( i = 0; i < ARRAY_LEN( rx_regs ); i++ ) {
+			r = &rx_regs[i];
+			if ( r->type >= RTYPE_VAR4 && r->u.var.base == v->base ) {
+				if ( v->addr < r->u.var.addr + r->size && v->addr + size > r->u.var.addr ) {
+					r->type = RTYPE_UNUSED;
+				}
 			}
 		}
+		for ( i = 0; i < ARRAY_LEN( sx_regs ); i++ ) {
+			r = &sx_regs[i];
+			if ( r->type >= RTYPE_VAR4 && r->u.var.base == v->base ) {
+				if ( v->addr < r->u.var.addr + r->size && v->addr + size > r->u.var.addr ) {
+					r->type = RTYPE_UNUSED;
+				}
+			}
+		}
+
 		r = &sx_regs[ reg ];
 		r->type = RTYPE_VAR4;
 		r->u.var = *v;
 		r->refcnt = 1;
 		r->ip = ip;
 		r->zext = 0;
+		r->size = size;
 	}
 #endif
 }
@@ -1444,7 +1486,6 @@ static void wipe_vars( void )
 }
 
 
-#if 0
 static qboolean search_opstack( opstack_value_t type, uint32_t value ) {
 	int i;
 	for ( i = 1; i <= opstack; i++ ) {
@@ -1454,7 +1495,6 @@ static qboolean search_opstack( opstack_value_t type, uint32_t value ) {
 	}
 	return qfalse;
 }
-#endif
 
 
 static void wipe_rx_meta( uint32_t reg )
@@ -1516,42 +1556,39 @@ static void mov_sx_imm( uint32_t reg, uint32_t imm32 )
 
 static void set_local_address( uint32_t reg, const uint32_t addr )
 {
-	emit_lea( reg, R_PSTACK, addr ); // reg = programStack + const
+	emit_lea( reg, R_PSTACK, addr ); // reg = programStack + addr
 }
 
 
 static void flush_item( opstack_t *it )
 {
-	uint32_t rx;
-
 	switch ( it->type ) {
 
 		case TYPE_RX:
 			if ( it->offset >= 0 )
-				emit_store_rx( it->value, R_OPSTACK, it->offset ); // opStack[ it->offset ] = eax
-			//unmask_rx( it->value );
+				emit_store_rx( it->value, R_OPSTACK, it->offset );	// opStack[ it->offset ] = eax
 			break;
 
 		case TYPE_SX:
-			emit_store_sx( it->value, R_OPSTACK, it->offset ); // opStack[ it->offset ] = xmm0
-			//unmask_sx( it->value );
+			emit_store_sx( it->value, R_OPSTACK, it->offset );		// opStack[ it->offset ] = xmm0
 			break;
 
 		case TYPE_CONST:
 			if ( it->value == 0 ) {
-				rx = alloc_rx_const( R_EAX, it->value );
-				emit_store_rx( rx, R_OPSTACK, it->offset ); // opStack[ it->offset ] = eax
+				uint32_t rx = alloc_rx_const( R_EAX, it->value );	// mov eax, const
+				emit_store_rx( rx, R_OPSTACK, it->offset );			// opStack[ it->offset ] = eax
 				unmask_rx( rx );
 			} else {
 				emit_store_imm32( it->value, R_OPSTACK, it->offset ); // opStack[ it->offset ] = const
 			}
 			break;
 
-		case TYPE_LOCAL:
-			rx = alloc_rx_local( R_EAX, it->value );
-			emit_store_rx( rx, R_OPSTACK, it->offset ); // opStack[ it->offset ] = eax
+		case TYPE_LOCAL: {
+			uint32_t rx = alloc_rx_local( R_EAX, it->value );	// lea eax, [pStack + address]
+			emit_store_rx( rx, R_OPSTACK, it->offset );			// opStack[ it->offset ] = eax
 			unmask_rx( rx );
 			break;
+		}
 
 		default:
 			break;
@@ -1559,6 +1596,18 @@ static void flush_item( opstack_t *it )
 
 	it->type = TYPE_RAW;
 	it->safe_arg = 0;
+}
+
+
+static void flush_items( opstack_value_t type, uint32_t value ) {
+	int i;
+
+	for ( i = 0; i <= opstack; i++ ) {
+		opstack_t *it = opstackv + i;
+		if ( it->type == type && it->value == value ) {
+			flush_item( it );
+		}
+	}
 }
 
 
@@ -1704,7 +1753,7 @@ static void dec_opstack_discard( void )
 
 
 // returns bitmask of registers present on opstack
-static uint32_t build_opstack_mask( int reg_type )
+static uint32_t build_opstack_mask( opstack_value_t reg_type )
 {
 	uint32_t mask = 0;
 	int i;
@@ -1767,8 +1816,7 @@ static uint32_t alloc_rx_const( uint32_t pref, uint32_t imm )
 		const uint32_t mask = build_rx_mask() | build_opstack_mask( TYPE_RX );
 		int min_ref = MAX_QINT;
 		int min_ip = MAX_QINT;
-		int min_ref_idx = -1;
-		int first_free = -1;
+		int idx = -1;
 		int i, n;
 
 		if ( ( pref & XMASK ) == 0 ) {
@@ -1778,7 +1826,6 @@ static uint32_t alloc_rx_const( uint32_t pref, uint32_t imm )
 				if ( r->type == RTYPE_CONST && r->u.value == imm ) {
 					r->refcnt++;
 					r->ip = ip;
-					//unmask_rx( n );
 					mask_rx( n );
 					return n;
 				}
@@ -1788,16 +1835,10 @@ static uint32_t alloc_rx_const( uint32_t pref, uint32_t imm )
 		for ( i = 0; i < ARRAY_LEN( rx_list_cache ); i++ ) {
 			n = rx_list_cache[i];
 			if ( mask & ( 1 << n ) ) {
-				// target register must be unmasked and not present on opstack
+				// target register must be unmasked and not present on the opStack
 				continue;
 			}
 			r = &rx_regs[n];
-			if ( r->type == RTYPE_UNUSED ) {
-				if ( first_free == -1 ) {
-					first_free = n;
-				}
-				continue;
-			}
 			if ( r->type == RTYPE_CONST && r->u.value == imm ) {
 				// exact match, re-use this register
 				r->refcnt++; // increase reference count
@@ -1805,39 +1846,29 @@ static uint32_t alloc_rx_const( uint32_t pref, uint32_t imm )
 				mask_rx( n );
 				return n;
 			}
+			if ( r->type == RTYPE_UNUSED ) {
+				idx = n;
+				break;
+			}
 			if ( ( r->refcnt < min_ref ) || ( r->refcnt == min_ref && r->ip < min_ip ) ) {
-				// update least referenced index
+				// update least referenced item index
 				min_ref = r->refcnt;
 				min_ip = r->ip;
-				min_ref_idx = n;
+				idx = n;
 				continue;
 			}
 		}
-
-		// no matches, use first free
-		if ( first_free != -1 ) {
-			r = &rx_regs[first_free];
+		if ( idx != -1 ) {
+			r = &rx_regs[ idx ];
 			r->type = RTYPE_CONST;
 			r->u.value = imm;
 			r->refcnt = 1;
 			r->ip = ip;
-			mov_rx_imm32( first_free, imm );
-			mask_rx( first_free );
-			return first_free;
+			mov_rx_imm32( idx, imm );
+			mask_rx( idx );
+			return idx;
 		}
-
-		// no free slots, overwrite least referenced
-		if ( min_ref_idx != -1 ) {
-			r = &rx_regs[min_ref_idx];
-			r->type = RTYPE_CONST;
-			r->u.value = imm;
-			r->refcnt = 1;
-			r->ip = ip;
-			mov_rx_imm32( min_ref_idx, imm );
-			mask_rx( min_ref_idx );
-			return min_ref_idx;
-		}
-		// else go to usual allocation
+		// else go to usual allocation to handle register spilling
 	}
 #endif // CONST_CACHE_RX
 #endif // DYN_ALLOC_RX
@@ -1873,8 +1904,7 @@ static uint32_t alloc_sx_const( uint32_t pref, uint32_t imm )
 		const uint32_t mask = build_sx_mask() | build_opstack_mask( TYPE_SX );
 		int min_ref = MAX_QINT;
 		int min_ip = MAX_QINT;
-		int min_ref_idx = -1;
-		int first_free = -1;
+		int idx = -1;
 		int i, n;
 
 		if ( ( pref & XMASK ) == 0 ) {
@@ -1893,16 +1923,10 @@ static uint32_t alloc_sx_const( uint32_t pref, uint32_t imm )
 		for ( i = 0; i < ARRAY_LEN( sx_list_cache ); i++ ) {
 			n = sx_list_cache[i];
 			if ( mask & ( 1 << n ) ) {
-				// target register must be unmasked
+				// target register must be unmasked and not present on the opStack
 				continue;
 			}
 			r = &sx_regs[n];
-			if ( r->type == RTYPE_UNUSED ) {
-				if ( first_free == -1 ) {
-					first_free = n;
-				}
-				continue;
-			}
 			if ( r->type == RTYPE_CONST && r->u.value == imm ) {
 				// exact match, re-use this register
 				r->refcnt++; // increase reference count
@@ -1910,43 +1934,31 @@ static uint32_t alloc_sx_const( uint32_t pref, uint32_t imm )
 				mask_sx( n );
 				return n;
 			}
+			if ( r->type == RTYPE_UNUSED ) {
+				idx = n;
+				break;
+			}
 			if ( ( r->refcnt < min_ref ) || ( r->refcnt == min_ref && r->ip < min_ip ) ) {
-				// update least referenced index
+				// update least referenced item index
 				min_ref = r->refcnt;
 				min_ip = r->ip;
-				min_ref_idx = n;
+				idx = n;
 				continue;
 			}
 		}
-
-		// no matches, use first free
-		if ( first_free != -1 ) {
-			mov_sx_imm( first_free, imm );
-			r = &sx_regs[first_free];
+		if ( idx != -1 ) {
+			r = &sx_regs[ idx ];
 			r->type = RTYPE_CONST;
 			r->u.value = imm;
 			r->refcnt = 1;
 			r->ip = ip;
-
-			mask_sx( first_free );
-			return first_free;
+			mov_sx_imm( idx, imm );
+			mask_sx( idx );
+			return idx;
 		}
-
-		// no free slots, overwrite least referenced
-		if ( min_ref_idx != -1 ) {
-			mov_sx_imm( min_ref_idx, imm );
-			r = &sx_regs[min_ref_idx];
-			r->type = RTYPE_CONST;
-			r->u.value = imm;
-			r->refcnt = 1;
-			r->ip = ip;
-
-			mask_sx( min_ref_idx );
-			return min_ref_idx;
-		}
-		// else go to usual allocation
+		// else go to usual allocation to handle register spilling
 	}
-#endif
+#endif // CONST_CACHE_SX
 #endif // DYN_ALLOC_SX
 
 	sx = alloc_sx( pref );
@@ -2009,11 +2021,13 @@ static uint32_t dyn_alloc_rx( uint32_t pref )
 				continue;
 			}
 			flush_item( it );
+			flush_items( TYPE_RX, n ); // flush cloned registers too
 			wipe_rx_meta( n );
 			mask_rx( n );
 			return n;
 		}
 	}
+
 	return ~0U;
 }
 
@@ -2022,7 +2036,6 @@ static uint32_t dyn_alloc_rx( uint32_t pref )
 static uint32_t alloc_rx( uint32_t pref )
 {
 	uint32_t reg;
-	int i;
 
 #ifdef DYN_ALLOC_RX
 	if ( ( pref & FORCED ) == 0 ) {
@@ -2042,13 +2055,7 @@ static uint32_t alloc_rx( uint32_t pref )
 #endif
 
 	// FORCED option: find and flush target register
-	for ( i = 0; i <= opstack; i++ ) {
-		opstack_t *it = opstackv + i;
-		if ( it->type == TYPE_RX && it->value == reg ) {
-			flush_item( it );
-			// break;
-		}
-	}
+	flush_items( TYPE_RX, reg );
 
 	wipe_rx_meta( reg );
 	mask_rx( reg );
@@ -2100,11 +2107,13 @@ static uint32_t dyn_alloc_sx( uint32_t pref )
 				continue;
 			}
 			flush_item( it );
+			flush_items( TYPE_SX, n ); // flush cloned registers too
 			wipe_sx_meta( n );
 			mask_sx( n );
 			return n;
 		}
 	}
+
 	return ~0U;
 }
 
@@ -2113,7 +2122,6 @@ static uint32_t dyn_alloc_sx( uint32_t pref )
 static uint32_t alloc_sx( uint32_t pref )
 {
 	uint32_t reg;
-	int i;
 
 #ifdef DYN_ALLOC_SX
 	if ( ( pref & FORCED ) == 0 ) {
@@ -2133,13 +2141,7 @@ static uint32_t alloc_sx( uint32_t pref )
 #endif
 
 	// FORCED option: find and flush target register
-	for ( i = 0; i <= opstack; i++ ) {
-		opstack_t *it = opstackv + i;
-		if ( it->type == TYPE_SX && it->value == reg ) {
-			flush_item( it );
-			// break;
-		}
-	}
+	flush_items( TYPE_SX, reg );
 
 	wipe_sx_meta( reg );
 	mask_sx( reg );
@@ -2192,19 +2194,11 @@ static void store_rx_opstack( uint32_t reg )
 	opstack_t *it = opstackv + opstack;
 
 #ifdef DEBUG_VM
-	uint32_t i;
-
 	if ( opstack <= 0 )
 		DROP( "bad opstack %i", opstack * 4 );
 
 	if ( it->type != TYPE_RAW )
 		DROP( "bad type %i at opstack %i", it->type, opstack * 4 );
-
-	for ( i = 1; i < opstack; i++ ) {
-		if ( opstackv[i].type == TYPE_RX && opstackv[i].value == reg ) {
-			DROP( "register #%i is already at opstack %i", reg, i * 4 );
-		}
-	}
 #endif
 
 	it->type = TYPE_RX;
@@ -2212,11 +2206,8 @@ static void store_rx_opstack( uint32_t reg )
 	it->value = reg;
 	it->safe_arg = 0;
 
-	//wipe_rx_meta( reg );
-
 	unmask_rx( reg ); // so it can be flushed on demand
 }
-
 
 
 static void store_syscall_opstack( void )
@@ -2247,27 +2238,17 @@ static void store_sx_opstack( uint32_t reg )
 	opstack_t *it = opstackv + opstack;
 
 #ifdef DEBUG_VM
-	int i;
-
 	if ( opstack <= 0 )
 		DROP( "bad opstack %i", opstack * 4 );
 
 	if ( it->type != TYPE_RAW )
 		DROP( "bad type %i at opstack %i", it->type, opstack * 4 );
-
-	for ( i = 1; i < opstack; i++ ) {
-		if ( opstackv[i].type == TYPE_SX && opstackv[i].value == reg ) {
-			DROP( "register #%i is already at opstack %i", reg, i * 4 );
-		}
-	}
 #endif
 
 	it->type = TYPE_SX;
 	it->offset = opstack * sizeof( int32_t );
 	it->value = reg;
 	it->safe_arg = 0;
-
-	//wipe_sx_meta( reg );
 
 	unmask_sx( reg ); // so it can be flushed on demand
 }
@@ -2296,7 +2277,22 @@ static void store_item_opstack( instruction_t *ins )
 static uint32_t finish_rx( uint32_t pref, uint32_t reg ) {
 
 	if ( pref & RCONST ) {
+		// non-destructive operation
 		return reg;
+	}
+
+	if ( search_opstack( TYPE_RX, reg ) ) {
+		// another instance is present on opStack
+		if ( pref & FORCED ) {
+			// nothing should left for a FORCED register
+			flush_items( TYPE_RX, reg );
+		} else {
+			// copy it
+			int rx = alloc_rx( R_ECX );
+			emit_mov_rx( rx, reg );
+			unmask_rx( reg );
+			return rx;
+		}
 	}
 
 	wipe_rx_meta( reg );
@@ -2353,9 +2349,6 @@ static uint32_t load_rx_opstack( uint32_t pref )
 			// copy source to target
 			emit_mov_rx( reg, it->value );
 
-			// release source
-			//unmask_rx( it->value );
-
 			it->type = TYPE_RAW;
 			return reg;
 		}
@@ -2367,9 +2360,6 @@ static uint32_t load_rx_opstack( uint32_t pref )
 		reg = alloc_rx( pref );
 
 		emit_mov_rx_sx( reg, it->value ); // intreg <- xmmreg
-
-		// release source
-		unmask_sx( it->value );
 
 		it->type = TYPE_RAW;
 		return reg;
@@ -2405,7 +2395,22 @@ static uint32_t load_rx_opstack( uint32_t pref )
 static uint32_t finish_sx( uint32_t pref, uint32_t reg ) {
 
 	if ( pref & RCONST ) {
+		// non-destructive operation
 		return reg;
+	}
+
+	if ( search_opstack( TYPE_SX, reg ) ) {
+		// another instance is present on opStack
+		if ( pref & FORCED ) {
+			// nothing should left for a FORCED register
+			flush_items( TYPE_SX, reg );
+		} else {
+			// must be copied
+			int sx = alloc_sx( R_XMM2 );
+			emit_mov_sx( sx, reg );
+			unmask_sx( reg );
+			return sx;
+		}
 	}
 
 	wipe_sx_meta( reg );
@@ -2455,9 +2460,6 @@ static uint32_t load_sx_opstack( uint32_t pref )
 			// copy source to target
 			emit_mov_sx( reg, it->value );
 
-			// release source
-			//unmask_sx( it->value );
-
 			it->type = TYPE_RAW;
 			return reg;
 		}
@@ -2470,9 +2472,6 @@ static uint32_t load_sx_opstack( uint32_t pref )
 		reg = alloc_sx( pref );
 
 		emit_mov_sx_rx( reg, it->value );
-
-		// release source
-		unmask_rx( it->value );
 
 		// keep meta information about integer register so it can be reused
 		//wipe_rx_meta( it->value );
@@ -2867,7 +2866,7 @@ static void emit_CheckReg( vm_t *vm, instruction_t *ins, uint32_t reg, func_t fu
 #if idx64
 		emit_and_rx( reg, R_DATAMASK );					// reg = reg & dataMask
 #else
-		emit_op_rx_imm32( X_ADD, reg, vm->dataMask );	// reg = reg & vm->dataMask
+		emit_op_rx_imm32( X_AND, reg, vm->dataMask );	// reg = reg & vm->dataMask
 #endif
 	}
 #endif
@@ -3753,7 +3752,7 @@ __compile:
 	init_opstack();
 
 #ifdef DEBUG_INT
-	Emit1( 0xCC ); // int 3h
+	emit_brk();
 #endif
 
 #if idx64
@@ -3785,7 +3784,7 @@ __compile:
 
 	emit_load_rx( R_PSTACK, R_EAX, 0 ); // mov esi, dword ptr [rax]
 
-	emit_lea( R_OPSTACKTOP | R_REX, R_OPSTACK, sizeof( int32_t ) * MAX_OPSTACK_SIZE - 1 ); // lea r15, [opStack + opStackSize - 1]
+	emit_lea( R_OPSTACKTOP | R_REX, R_OPSTACK, sizeof( int32_t ) * ( MAX_OPSTACK_SIZE - 1 ) ); // lea r15, [opStack + opStackSize - 4]
 
 	EmitCallOffset( FUNC_ENTR );
 
@@ -3849,14 +3848,14 @@ __compile:
 		switch ( ci->op ) {
 
 			case OP_UNDEF:
-				Emit1( 0xCC );		// int 3
+				emit_brk();			// int 3
 				break;
 
 			case OP_IGNORE:
 				break;
 
 			case OP_BREAK:
-				Emit1( 0xCC );		// int 3
+				emit_brk();			// int 3
 				break;
 
 			case OP_ENTER:
@@ -3875,6 +3874,13 @@ __compile:
 #endif
 						break;
 					}
+				}
+
+				if ( proc_len == 0 ) {
+					// empty function, just return
+					emit_ret();
+					ip += 2; // OP_PUSH + OP_LEAVE
+					break;
 				}
 
 				emit_push( R_PROCBASE );				// procBase
@@ -4009,13 +4015,12 @@ __compile:
 						discard_top();
 						if ( find_sx_var( &sx[0], &var ) ) {
 							// already cached in some register
-							wipe_sx_meta( sx[0] );
 							mask_sx( sx[0] );
 						} else {
 							// not cached, perform load
 							sx[0] = alloc_sx( R_XMM0 );
 							emit_load_sx( sx[0], var.base, var.addr );	// xmmm0 = var.base[var.addr]
-							//set_sx_var( sx[0], &var );					// update metadata, this may wipe constant
+							set_sx_var( sx[0], &var );					// update metadata, this may wipe constant
 						}
 					} else {
 						// address stored in register
@@ -4050,8 +4055,6 @@ __compile:
 							}
 							f->zext = 0;
 						}
-						//set_rx_var( rx[0], &var, var_type, f->zext );
-						wipe_rx_meta( rx[0] );
 						mask_rx( rx[0] );
 
 					} else {
@@ -4071,7 +4074,7 @@ __compile:
 								case OP_LOAD2: emit_load2( rx[0], var.base, var.addr );	break; // eax = (unsigned short)var.base[var.addr]
 								case OP_LOAD4: emit_load_rx( rx[0], var.base, var.addr ); break; // eax = (dword)var.base[var.addr]
 							}
-							//set_rx_var( rx[0], &var, var_type, 0 );	// update metadata, this may wipe constant
+							set_rx_var( rx[0], &var, var_type, 0 );	// update metadata, this may wipe constant
 						}
 					}
 				} else {
@@ -4082,22 +4085,36 @@ __compile:
 						case OP_LOAD2:	sign_extend = OP_SEX16; break;
 						default:		sign_extend = OP_UNDEF; break;
 					}
-					rx[0] = load_rx_opstack( R_EAX );				// eax = *opstack
-					emit_CheckReg( vm, ci, rx[0], FUNC_DATR );		// check eax bounds
+#if 1
+					rx[0] = rx[1] = load_rx_opstack( R_EAX | RCONST ); // target, address = *opstack
+					if ( search_opstack( TYPE_RX, rx[0] ) ) {
+						// address is duplicated on opStack, allocate new register for the target
+						rx[0] = alloc_rx( R_EDX );
+					} else {
+						// will be overwritten, wipe metadata
+						wipe_rx_meta( rx[0] );
+					}
+#else
+					rx[0] = rx[1] = load_rx_opstack( R_EAX );		// target, address = *opstack
+#endif
+					emit_CheckReg( vm, ci, rx[1], FUNC_DATR );		// check address bounds
 					if ( (ci+1)->op == sign_extend && sign_extend != OP_UNDEF ) {
 						// merge with following sign-extension instruction
 						switch ( ci->op ) {
-							case OP_LOAD1: emit_load1_sex_index( rx[0], R_DATABASE, rx[0] ); break; // eax = (signed byte)[dataBase + eax]
-							case OP_LOAD2: emit_load2_sex_index( rx[0], R_DATABASE, rx[0] ); break; // eax = (nsigned short)[dataBase + eax]
+							case OP_LOAD1: emit_load1_sex_index( rx[0], R_DATABASE, rx[1] ); break; // target = (signed byte)[dataBase + address]
+							case OP_LOAD2: emit_load2_sex_index( rx[0], R_DATABASE, rx[1] ); break; // target = (nsigned short)[dataBase + address]
 						}
 						ip += 1; // OP_SEX/OP_SEX16
 					} else {
 						// usual load with zero-extension
 						switch ( ci->op ) {
-							case OP_LOAD1: emit_load1_index( rx[0], R_DATABASE, rx[0] ); break; // eax = (unsigned byte)[dataBase + eax]
-							case OP_LOAD2: emit_load2_index( rx[0], R_DATABASE, rx[0] ); break; // eax = (unsigned short)[dataBase + eax]
-							case OP_LOAD4: emit_load4_index( rx[0], R_DATABASE, rx[0] ); break; // eax = (dword)dataBase[eax]
+							case OP_LOAD1: emit_load1_index( rx[0], R_DATABASE, rx[1] ); break; // target = (unsigned byte)[dataBase + address]
+							case OP_LOAD2: emit_load2_index( rx[0], R_DATABASE, rx[1] ); break; // target = (unsigned short)[dataBase + address]
+							case OP_LOAD4: emit_load4_index( rx[0], R_DATABASE, rx[1] ); break; // target = (dword)dataBase[dataBase + address]
 						}
+					}
+					if ( rx[1] != rx[0] ) {
+						unmask_rx( rx[1] );
 					}
 				}
 				store_rx_opstack( rx[0] );						// *opstack = eax
@@ -4175,6 +4192,7 @@ __compile:
 				unmask_rx( rx[2] );
 				unmask_rx( rx[1] );
 				unmask_rx( rx[0] );
+				wipe_vars();
 				break;
 
 			case OP_SEX8:
