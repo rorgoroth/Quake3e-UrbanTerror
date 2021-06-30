@@ -909,6 +909,16 @@ static intptr_t SV_GameSystemCalls( intptr_t *args ) {
 		botlib_export->ai.BotGetWeaponInfo( args[1], args[2], VMA(3) );
 		return 0;
 	case BOTLIB_AI_LOAD_WEAPON_WEIGHTS:
+		{	//Fix for bots [connecting] issue on players command.
+			int i;
+			client_t *cl;
+			for (i=0, cl=svs.clients ; i < sv_maxclients->integer ; i++,cl++) {
+				if ( cl->netchan.remoteAddress.type == NA_BOT ) {
+					char *ip ="bot";
+					Info_SetValueForKey(cl->userinfo, "ip", ip);
+				}
+			}
+		}
 		return botlib_export->ai.BotLoadWeaponWeights( args[1], VMA(2) );
 	case BOTLIB_AI_ALLOC_WEAPON_STATE:
 		return botlib_export->ai.BotAllocWeaponState();
