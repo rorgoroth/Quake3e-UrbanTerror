@@ -1481,6 +1481,189 @@ static void SV_Locations_f( void ) {
 }
 
 
+/////////////////////////////////////////////////////////////////////
+// Name        : SV_SendClientCommand_f
+// Description : Send a reliable command as a specific client
+// Author      : Fenix
+/////////////////////////////////////////////////////////////////////
+static void SV_SendClientCommand_f(void) {
+
+    char      *cmd;
+    client_t  *cl;
+
+    // make sure server is running
+    if (!com_sv_running->integer) {
+        Com_Printf("Server is not running\n");
+        return;
+    }
+
+    // check for correct parameters
+    if (Cmd_Argc() < 3 || !strlen(Cmd_Argv(2))) {
+        Com_Printf("Usage: sendclientcommand <client> <command>\n"
+                   "       sendclientcommand all <command> = send to everyone\n");
+        return;
+    }
+
+    // get the command
+    cmd = Cmd_ArgsFromRaw(2);
+
+    if (!Q_stricmp(Cmd_Argv(1), "all")) {
+
+        // send to everyone
+        SV_SendServerCommand(NULL, "%s", cmd);
+
+    } else {
+
+        // search the client
+        cl = SV_GetPlayerByHandle();
+        if (!cl) {
+            return;
+        }
+
+        // send the command to the client
+        SV_SendServerCommand(cl, "%s", cmd);
+
+    }
+}
+
+
+/////////////////////////////////////////////////////////////////////
+// Name        : SV_Spoof_f
+// Description : Send a game client command as a specific client
+// Author      : Fenix
+/////////////////////////////////////////////////////////////////////
+static void SV_Spoof_f(void) {
+    char      *cmd;
+    client_t  *cl;
+
+    // make sure server is running
+    if (!com_sv_running->integer) {
+        Com_Printf("Server is not running\n");
+        return;
+    }
+
+    // check for correct parameters
+    if (Cmd_Argc() < 3 || !strlen(Cmd_Argv(2))) {
+        Com_Printf("Usage: spoof <client> <command>\n");
+        return;
+    }
+
+    // search the client
+    cl = SV_GetPlayerByHandle();
+    if (!cl) {
+        return;
+    }
+
+    // get the command
+    cmd = Cmd_ArgsFromRaw(2);
+    Cmd_TokenizeString(cmd);
+
+    // send the command
+    VM_Call(gvm, 1, GAME_CLIENT_COMMAND, cl - svs.clients);
+
+}
+
+
+/////////////////////////////////////////////////////////////////////
+// Name        : SV_ForceCvar_f_helper
+// Description : Set a CVAR for a user
+// Modified by : Omg
+/////////////////////////////////////////////////////////////////////
+static void SV_ForceCvar_f_helper(client_t *cl) {
+    qboolean ret;
+
+    // if the dude is not connected
+    if (cl->state < CS_CONNECTED) {
+        return;
+    }
+
+    // we already check that Cmd_Argv(2) has nonzero length
+    // if Cmd_Argv(3) has zero length, the key will just be removed
+    ret = Info_SetValueForKey(cl->userinfo, Cmd_Argv(2), Cmd_Argv(3));
+
+    if ( !ret ) {
+        // the admin already saw the error message
+        // for illegal key, value or OS infostring, so skip next.
+        return;
+    }
+
+    SV_UserinfoChanged(cl, qtrue, qfalse);
+
+    // call prog code to allow overrides
+    VM_Call(gvm, 1, GAME_CLIENT_USERINFO_CHANGED, cl - svs.clients);
+}
+
+
+/////////////////////////////////////////////////////////////////////
+// Name        : SV_ForceCvar_f
+// Description : Set a CVAR for a user
+/////////////////////////////////////////////////////////////////////
+static void SV_ForceCvar_f(void) {
+    int       i;
+    client_t  *cl;
+
+    // make sure server is running
+    if (!com_sv_running->integer) {
+        Com_Printf("Server is not running\n");
+        return;
+    }
+
+    if (Cmd_Argc() != 4 || strlen(Cmd_Argv(2)) == 0) {
+        Com_Printf("Usage: forcecvar <client> \"<cvar>\" \"<value>\"\n"
+                   "       forcecvar allbots \"<cvar>\" \"<value>\" = force for all the bots\n"
+                   "       forcecvar all  \"<cvar>\" \"<value>\" = force for everyone\n");
+        return;
+    }
+
+    if (!Q_stricmp(Cmd_Argv(1), "all")) {
+
+        for (i = 0, cl = svs.clients; i < sv_maxclients->integer; i++, cl++) {
+
+            // if not connected
+            if (!cl->state) {
+                continue;
+            }
+
+            // call internal helper
+            SV_ForceCvar_f_helper(cl);
+
+        }
+
+    } else if (!Q_stricmp(Cmd_Argv(1), "allbots")) {
+
+        for (i = 0, cl = svs.clients; i < sv_maxclients->integer; i++, cl++) {
+
+            // if not connected
+            if (!cl->state) {
+                continue;
+            }
+
+            // if the dude is not a bot
+            if (cl->netchan.remoteAddress.type != NA_BOT) {
+                continue;
+            }
+
+            // call internal helper
+            SV_ForceCvar_f_helper(cl);
+
+        }
+
+    } else {
+
+        // search the client
+        cl = SV_GetPlayerByHandle();
+
+        if (!cl) {
+            return;
+        }
+
+        // call internal helper
+        SV_ForceCvar_f_helper(cl);
+
+    }
+}
+
+
 /*
 ==================
 SV_Teleport_f
@@ -1630,6 +1813,9 @@ void SV_AddOperatorCommands( void ) {
 	Cmd_AddCommand( "filtercmd", SV_AddFilterCmd_f );
 
         Cmd_AddCommand("teleport", SV_Teleport_f);
+	Cmd_AddCommand("spoof", SV_Spoof_f);
+	Cmd_AddCommand("sendclientcommand", SV_SendClientCommand_f);
+	Cmd_AddCommand("forcecvar", SV_ForceCvar_f);
 
 }
 
