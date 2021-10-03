@@ -256,7 +256,6 @@ static void Con_Dump_f( void )
 	int		bufferlen;
 	char	*buffer;
 	char	filename[ MAX_OSPATH ];
-	const char *ext;
 
 	if ( Cmd_Argc() != 2 )
 	{
@@ -267,8 +266,8 @@ static void Con_Dump_f( void )
 	Q_strncpyz( filename, Cmd_Argv( 1 ), sizeof( filename ) );
 	COM_DefaultExtension( filename, sizeof( filename ), ".txt" );
 
-	if ( !FS_AllowedExtension( filename, qfalse, &ext ) ) {
-		Com_Printf( "%s: Invalid filename extension '%s'.\n", __func__, ext );
+	if ( !COM_CompareExtension( filename, ".txt" ) ) {
+		Com_Printf( "Con_Dump_f: Only the \".txt\" extension is supported by this command!\n" );
 		return;
 	}
 
