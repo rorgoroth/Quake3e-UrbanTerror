@@ -79,8 +79,8 @@ int   		s_paintedtime; 		// sample PAIRS
 // MAX_SFX may be larger than MAX_SOUNDS because
 // of custom player sounds
 #define MAX_SFX			4096
-static sfx_t s_knownSfx[MAX_SFX];
-static int s_numSfx = 0;
+sfx_t s_knownSfx[MAX_SFX];
+int s_numSfx = 0;
 
 #define LOOP_HASH		128
 static sfx_t *sfxHash[LOOP_HASH];
