@@ -2253,23 +2253,14 @@ static void emitFuncOffset( vm_t *vm, offset_t func )
 
 static void emit_CheckReg( vm_t *vm, uint32_t reg, offset_t func )
 {
-#ifdef DEBUG_VM
-	if ( vm->forceDataMask ) {
+	if ( vm->forceDataMask || !( vm_rtChecks->integer & VM_RTCHECK_DATA ) ) {
 		emit( AND32( reg, rDATAMASK, reg ) ); // rN = rN & rDATAMASK
 		return;
 	}
-
-	if ( !( vm_rtChecks->integer & VM_RTCHECK_DATA ) )
-		return;
 
 	emit( CMP32( reg, rDATAMASK ) );
 	emit( Bcond( LO, +8 ) );
 	emitFuncOffset( vm, func );  // error function
-#else
-	if ( vm_rtChecks->integer & VM_RTCHECK_DATA || vm->forceDataMask ) {
-		emit( AND32( reg, rDATAMASK, reg ) ); // rN = rN & rDATAMASK
-	}
-#endif
 }
 
 
@@ -3498,7 +3489,7 @@ __recompile:
 }
 
 
-int VM_CallCompiled( vm_t *vm, int nargs, int *args )
+int32_t VM_CallCompiled( vm_t *vm, int nargs, int32_t *args )
 {
 	int32_t		opStack[ MAX_OPSTACK_SIZE ];
 	int			stackOnEntry;
@@ -3508,7 +3499,7 @@ int VM_CallCompiled( vm_t *vm, int nargs, int *args )
 	// we might be called recursively, so this might not be the very top
 	stackOnEntry = vm->programStack;
 
-	vm->programStack -= ( MAX_VMMAIN_CALL_ARGS + 2 ) * 4;
+	vm->programStack -= ( MAX_VMMAIN_CALL_ARGS + 2 ) * sizeof( int32_t );
 
 	// set up the stack frame
 	image = (int32_t*) ( vm->dataBase + vm->programStack );
@@ -3535,7 +3526,7 @@ int VM_CallCompiled( vm_t *vm, int nargs, int *args )
 		Com_Error( ERR_DROP, "%s(%s): opStack corrupted in compiled code", __func__, vm->name );
 	}
 
-	if ( vm->programStack != stackOnEntry - ( MAX_VMMAIN_CALL_ARGS + 2 ) * 4 ) {
+	if ( vm->programStack != stackOnEntry - ( MAX_VMMAIN_CALL_ARGS + 2 ) * sizeof( int32_t ) ) {
 		Com_Error( ERR_DROP, "%s(%s): programStack corrupted in compiled code", __func__, vm->name );
 	}
 #endif

@@ -1018,7 +1018,7 @@ void SV_PacketEvent( const netadr_t *from, msg_t *msg ) {
 		return;
 
 	// check for connectionless packet (0xffffffff) first
-	if ( *(int *)msg->data == -1 ) {
+	if ( *(int32_t *)msg->data == -1 ) {
 		SV_ConnectionlessPacket( from, msg );
 		return;
 	}
@@ -1324,7 +1324,7 @@ happen before SV_Frame is called
 void SV_Frame( int msec ) {
 	int		frameMsec;
 	int		startTime;
-	int		i, n;
+	int		i;
 
 	if ( Cvar_CheckGroup( CVG_SERVER ) )
 		SV_TrackCvarChanges(); // update rate settings, etc.
@@ -1379,23 +1379,21 @@ void SV_Frame( int msec ) {
 
 	// try to do silent restart earlier if possible
 	if ( sv.time > (12*3600*1000) && ( sv_levelTimeReset->integer == 0 || sv.time > 0x40000000 ) ) {
-		n = 0;
 		if ( svs.clients ) {
 			for ( i = 0; i < sv_maxclients->integer; i++ ) {
 				// FIXME: deal with bots (reconnect?)
 				if ( svs.clients[i].state != CS_FREE && svs.clients[i].netchan.remoteAddress.type != NA_BOT ) {
-					n = 1;
 					break;
 				}
 			}
-		}
-		if ( !n ) {
-			SV_Restart( "Restarting server" );
-			return;
+			if ( i == sv_maxclients->integer ) {
+				SV_Restart( "Restarting server" );
+				return;
+			}
 		}
 	}
 
-	if ( sv.restartTime && sv.time >= sv.restartTime ) {
+	if ( sv.restartTime && sv.time - sv.restartTime >= 0 ) {
 		sv.restartTime = 0;
 		Cbuf_AddText( "map_restart 0\n" );
 		return;
