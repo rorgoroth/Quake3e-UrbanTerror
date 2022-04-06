@@ -93,8 +93,9 @@ cvar_t		*con_conspeed;
 cvar_t		*con_notifytime;
 cvar_t 		*con_timestamp;
 cvar_t		*con_size;
+cvar_t		*con_scale;
 
-int         g_console_field_width = DEFAULT_CONSOLE_WIDTH;
+int			g_console_field_width;
 
 void		Con_Fixup(console_t *console);
 void		Con_CheckResize(console_t *console);
@@ -346,23 +347,25 @@ void Con_CheckResize( console_t *console )
 	short	tbuf[CON_TEXTSIZE], *src, *dst;
 	static int old_width, old_vispage;
 	int		vispage;
+	float	scale;
 
-	if ( console->viswidth == cls.glconfig.vidWidth )
+	if ( console->viswidth == cls.glconfig.vidWidth && !con_scale->modified ) {
 		return;
+	}
+
+	scale = con_scale->value;
 
 	console->viswidth = cls.glconfig.vidWidth;
 
-	if ( smallchar_width == 0 ) // might happen on early init
-	{
-		smallchar_width = SMALLCHAR_WIDTH;
-		smallchar_height = SMALLCHAR_HEIGHT;
-		bigchar_width = BIGCHAR_WIDTH;
-		bigchar_height = BIGCHAR_HEIGHT;
-	}
+	smallchar_width = SMALLCHAR_WIDTH * scale * cls.con_factor;
+	smallchar_height = SMALLCHAR_HEIGHT * scale * cls.con_factor;
+	bigchar_width = BIGCHAR_WIDTH * scale * cls.con_factor;
+	bigchar_height = BIGCHAR_HEIGHT * scale * cls.con_factor;
 
 	if ( cls.glconfig.vidWidth == 0 ) // video hasn't been initialized yet
 	{
-		width = DEFAULT_CONSOLE_WIDTH;
+		g_console_field_width = DEFAULT_CONSOLE_WIDTH;
+		width = DEFAULT_CONSOLE_WIDTH * scale;
 		console->linewidth = width;
 		console->totallines = CON_TEXTSIZE / console->linewidth;
 		console->vispage = 4;
@@ -371,7 +374,10 @@ void Con_CheckResize( console_t *console )
 	}
 	else
 	{
-		width = (cls.glconfig.vidWidth / smallchar_width) - 2;
+		width = ((cls.glconfig.vidWidth / smallchar_width) - 2);
+
+		g_console_field_width = width;
+		g_consoleField.widthInChars = g_console_field_width;
 
 		if ( width > MAX_CONSOLE_WIDTH )
 			width = MAX_CONSOLE_WIDTH;
@@ -384,6 +390,7 @@ void Con_CheckResize( console_t *console )
 		oldwidth = console->linewidth;
 		oldtotallines = console->totallines;
 		oldcurrent = console->current;
+
 		console->linewidth = width;
 		console->totallines = CON_TEXTSIZE / console->linewidth;
 		console->vispage = vispage;
@@ -422,6 +429,8 @@ void Con_CheckResize( console_t *console )
 	}
 
 	console->display = console->current;
+
+	con_scale->modified = qfalse;
 }
 
 
@@ -463,6 +472,9 @@ void Con_Init( void )
 	con_conspeed = Cvar_Get( "scr_conspeed", "3", 0 );
 	con_timestamp = Cvar_Get( "con_timestamp", "1", CVAR_ARCHIVE );
 	con_size = Cvar_Get( "con_size", "100", CVAR_ARCHIVE );
+
+	con_scale = Cvar_Get( "con_scale", "1", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_scale, "0.5", "8", CV_FLOAT );
 
 	Field_Clear( &g_consoleField );
 	g_consoleField.widthInChars = g_console_field_width;
@@ -683,11 +695,16 @@ void CL_ConsolePrint( const char *txt ) {
 
 	for (i = 0; i < numConsoles; i++) {
 		if ( !consoles[i].initialized ) {
+			static cvar_t null_cvar = { 0 };
 			consoles[i].color[0] = 
 			  consoles[i].color[1] = 
 			  consoles[i].color[2] =
 			  consoles[i].color[3] = 1.0f;
-			consoles[i].viswidth = -9999;
+			consoles[i].viswidth = -9999;		
+			cls.con_factor = 1.0f;
+			con_scale = &null_cvar;
+			con_scale->value = 1.0f;
+			con_scale->modified = qtrue;
 			Con_CheckResize(&consoles[i]);
 			consoles[i].initialized = qtrue;
 		}
@@ -1072,6 +1089,7 @@ Con_DrawConsole
 ==================
 */
 void Con_DrawConsole( void ) {
+
 	// check for console width changes from a vid mode change
 	Con_CheckResize(currentCon);
 
