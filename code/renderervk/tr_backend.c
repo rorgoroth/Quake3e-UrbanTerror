@@ -437,6 +437,8 @@ void GL_ClientState( int unit, unsigned stateBits )
 #endif
 
 
+static void RB_SetGL2D( void );
+
 /*
 ================
 RB_Hyperspace
@@ -445,25 +447,32 @@ A player has predicted a teleport, but hasn't arrived yet
 ================
 */
 static void RB_Hyperspace( void ) {
-	float		c;
+	color4ub_t c;
 
 	if ( !backEnd.isHyperspace ) {
 		// do initialization shit
 	}
 
-#ifdef USE_VULKAN
-	{
-		vec4_t color;
-		c = ( backEnd.refdef.time & 255 ) / 255.0f;
-		color[0] = color[1] = color[2] = c;
-		color[3] = 1.0;
-		vk_clear_color( color );
+	if ( tess.shader != tr.whiteShader ) {
+		if ( tess.numIndexes ) {
+			RB_EndSurface();
+		}
+		RB_BeginSurface( tr.whiteShader, 0 );
 	}
-#else
-	c = ( backEnd.refdef.time & 255 ) / 255.0f;
-	qglClearColor( c, c, c, 1 );
-	qglClear( GL_COLOR_BUFFER_BIT );
+
+#ifdef USE_VBO
+	VBO_UnBind();
 #endif
+
+	RB_SetGL2D();
+
+	c.rgba[0] = c.rgba[1] = c.rgba[2] = (backEnd.refdef.time & 255);
+	c.rgba[3] = 255;
+
+	RB_AddQuadStamp2( backEnd.refdef.x, backEnd.refdef.y, backEnd.refdef.width, backEnd.refdef.height,
+		0.0, 0.0, 0.0, 0.0, c );
+
+	RB_EndSurface();
 
 	backEnd.isHyperspace = qtrue;
 }
@@ -544,13 +553,11 @@ static void RB_BeginDrawingView( void ) {
 	qglClear( clearBits );
 #endif
 
-	if ( backEnd.refdef.rdflags & RDF_HYPERSPACE )
-	{
+	if ( backEnd.refdef.rdflags & RDF_HYPERSPACE ) {
 		RB_Hyperspace();
-		return;
-	}
-	else
-	{
+		backEnd.projection2D = qfalse;
+		SetViewportAndScissor();
+	} else {
 		backEnd.isHyperspace = qfalse;
 	}
 
@@ -1169,7 +1176,6 @@ RB_StretchPic
 static const void *RB_StretchPic( const void *data ) {
 	const stretchPicCommand_t	*cmd;
 	shader_t *shader;
-	int		numVerts, numIndexes;
 
 	cmd = (const stretchPicCommand_t *)data;
 
@@ -1196,52 +1202,7 @@ static const void *RB_StretchPic( const void *data ) {
 	}
 #endif
 
-	RB_CHECKOVERFLOW( 4, 6 );
-	numVerts = tess.numVertexes;
-	numIndexes = tess.numIndexes;
-
-	tess.numVertexes += 4;
-	tess.numIndexes += 6;
-
-	tess.indexes[ numIndexes ] = numVerts + 3;
-	tess.indexes[ numIndexes + 1 ] = numVerts + 0;
-	tess.indexes[ numIndexes + 2 ] = numVerts + 2;
-	tess.indexes[ numIndexes + 3 ] = numVerts + 2;
-	tess.indexes[ numIndexes + 4 ] = numVerts + 0;
-	tess.indexes[ numIndexes + 5 ] = numVerts + 1;
-
-	tess.vertexColors[ numVerts ].u32 =
-		tess.vertexColors[ numVerts + 1 ].u32 =
-		tess.vertexColors[ numVerts + 2 ].u32 =
-		tess.vertexColors[ numVerts + 3 ].u32 = backEnd.color2D.u32;
-
-	tess.xyz[ numVerts ][0] = cmd->x;
-	tess.xyz[ numVerts ][1] = cmd->y;
-	tess.xyz[ numVerts ][2] = 0;
-
-	tess.texCoords[0][ numVerts + 0][0] = cmd->s1;
-	tess.texCoords[0][ numVerts + 0][1] = cmd->t1;
-
-	tess.xyz[ numVerts + 1 ][0] = cmd->x + cmd->w;
-	tess.xyz[ numVerts + 1 ][1] = cmd->y;
-	tess.xyz[ numVerts + 1 ][2] = 0;
-
-	tess.texCoords[0][numVerts + 1][0] = cmd->s2;
-	tess.texCoords[0][numVerts + 1][1] = cmd->t1;
-
-	tess.xyz[ numVerts + 2 ][0] = cmd->x + cmd->w;
-	tess.xyz[ numVerts + 2 ][1] = cmd->y + cmd->h;
-	tess.xyz[ numVerts + 2 ][2] = 0;
-
-	tess.texCoords[0][numVerts + 2][0] = cmd->s2;
-	tess.texCoords[0][numVerts + 2][1] = cmd->t2;
-
-	tess.xyz[ numVerts + 3 ][0] = cmd->x;
-	tess.xyz[ numVerts + 3 ][1] = cmd->y + cmd->h;
-	tess.xyz[ numVerts + 3 ][2] = 0;
-
-	tess.texCoords[0][numVerts + 3][0] = cmd->s1;
-	tess.texCoords[0][numVerts + 3][1] = cmd->t2;
+	RB_AddQuadStamp2( cmd->x, cmd->y, cmd->w, cmd->h, cmd->s1, cmd->t1, cmd->s2, cmd->t2, backEnd.color2D );
 
 	return (const void *)(cmd + 1);
 }
