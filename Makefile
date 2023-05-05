@@ -40,14 +40,14 @@ USE_OPENGL       = 1
 USE_OPENGL2      = 0
 USE_SYSTEM_JPEG  = 0
 USE_VULKAN_API   = 1
-USE_Q3KEY	 = 1
+USE_Q3KEY	     = 1
 USE_URT_DEMO     = 1
 
 
 USE_RENDERER_DLOPEN = 1
 
-CNAME            = urbanterror-slim
-DNAME            = urbanterror-slim.ded
+CNAME            = quake3e
+DNAME            = quake3e.ded
 
 RENDERER_PREFIX  = $(CNAME)
 
