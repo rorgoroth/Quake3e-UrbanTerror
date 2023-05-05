@@ -51,7 +51,7 @@ static void GetClientState( uiClientState_t *state ) {
 LAN_LoadCachedServers
 ====================
 */
-void LAN_LoadCachedServers( void ) {
+static void LAN_LoadCachedServers( void ) {
 	fileHandle_t fileIn;
 	int size, file_size;
 
@@ -87,7 +87,7 @@ void LAN_LoadCachedServers( void ) {
 LAN_SaveServersToCache
 ====================
 */
-void LAN_SaveServersToCache( void ) {
+static void LAN_SaveServersToCache( void ) {
 	fileHandle_t fileOut;
 	int size;
 
@@ -591,7 +591,7 @@ static int LAN_ServerIsVisible(int source, int n ) {
 LAN_UpdateVisiblePings
 =======================
 */
-qboolean LAN_UpdateVisiblePings(int source ) {
+static qboolean LAN_UpdateVisiblePings(int source ) {
 	return CL_UpdateVisiblePings_f(source);
 }
 
@@ -699,11 +699,11 @@ static void CLUI_SetCDKey( char *buf ) {
 	if ( UI_usesUniqueCDKey() && gamedir[0] != '\0' ) {
 		Com_Memcpy( &cl_cdkey[16], buf, 16 );
 		cl_cdkey[32] = '\0';
-		// set the flag so the fle will be written at the next opportunity
+		// set the flag so the flag will be written at the next opportunity
 		cvar_modifiedFlags |= CVAR_ARCHIVE;
 	} else {
 		Com_Memcpy( cl_cdkey, buf, 16 );
-		// set the flag so the fle will be written at the next opportunity
+		// set the flag so the flag will be written at the next opportunity
 		cvar_modifiedFlags |= CVAR_ARCHIVE;
 	}
 }

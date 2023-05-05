@@ -38,7 +38,7 @@ static const char *svc_strings[256] = {
 	"svc_voipOpus",  // ioq3 extension
 };
 
-void SHOWNET( msg_t *msg, const char *s ) {
+static void SHOWNET( msg_t *msg, const char *s ) {
 	if ( cl_shownet->integer >= 2) {
 		Com_Printf ("%3i:%s\n", msg->readcount-1, s);
 	}
@@ -307,7 +307,7 @@ static void CL_ParseSnapshot( msg_t *msg ) {
 	// calculate ping time
 	for ( i = 0 ; i < PACKET_BACKUP ; i++ ) {
 		packetNum = ( clc.netchan.outgoingSequence - 1 - i ) & PACKET_MASK;
-		if ( cl.snap.ps.commandTime >= cl.outPackets[ packetNum ].p_serverTime ) {
+		if ( cl.snap.ps.commandTime - cl.outPackets[packetNum].p_serverTime >= 0 ) {
 			cl.snap.ping = cls.realtime - cl.outPackets[ packetNum ].p_realtime;
 			break;
 		}
@@ -506,6 +506,7 @@ static void CL_ParseGamestate( msg_t *msg ) {
 	int				cmd;
 	const char		*s;
 	char			oldGame[ MAX_QPATH ];
+	char			reconnectArgs[ MAX_CVAR_VALUE_STRING ];
 	qboolean		gamedirModified;
 
 	Con_Close();
@@ -605,13 +606,23 @@ static void CL_ParseGamestate( msg_t *msg ) {
 	// try to keep gamestate and connection state during game switch
 	cls.gameSwitch = gamedirModified;
 
+	// preserve \cl_reconnectAgrs between online game directory changes
+	// so after mod switch \reconnect will not restore old value from config but use new one
+	if ( gamedirModified ) {
+		Cvar_VariableStringBuffer( "cl_reconnectArgs", reconnectArgs, sizeof( reconnectArgs ) );
+	}
+
 	// reinitialize the filesystem if the game directory has changed
 	FS_ConditionalRestart( clc.checksumFeed, gamedirModified );
 
+	// restore \cl_reconnectAgrs
+	if ( gamedirModified ) {
+		Cvar_Set( "cl_reconnectArgs", reconnectArgs );
+	}
+
 	cls.gameSwitch = qfalse;
 
-	// This used to call CL_StartHunkUsers, but now we enter the download state before loading the
-	// cgame
+	// This used to call CL_StartHunkUsers, but now we enter the download state before loading the cgame
 	CL_InitDownloads();
 
 	// make sure the game starts
@@ -780,7 +791,7 @@ static void CL_ParseCommandString( msg_t *msg ) {
 		Com_Printf( " %3i(%3i) %s\n", seq, clc.serverCommandSequence, s );
 
 	// see if we have already executed stored it off
-	if ( clc.serverCommandSequence >= seq ) {
+	if ( clc.serverCommandSequence - seq >= 0 ) {
 		return;
 	}
 	clc.serverCommandSequence = seq;

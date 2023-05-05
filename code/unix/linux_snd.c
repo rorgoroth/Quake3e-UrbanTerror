@@ -440,6 +440,7 @@ static qboolean setup_ALSA( smode_t mode )
 		case 48: speed = 48000; break;
 		case 44: speed = 44100; break;
 		case 11: speed = 11025; break;
+		case  8: speed =  8000; break;
 		case 22:
 		default: speed = 22050; break;
 	};
@@ -1139,8 +1140,10 @@ qboolean SNDDMA_Init( void )
 		return qtrue;
 
 	sndbits = Cvar_Get("sndbits", "16", CVAR_ARCHIVE_ND | CVAR_LATCH);
+	Cvar_SetDescription( sndbits, "Bit resolution." );
 	sndspeed = Cvar_Get("sndspeed", "0", CVAR_ARCHIVE_ND | CVAR_LATCH);
 	sndchannels = Cvar_Get("sndchannels", "2", CVAR_ARCHIVE_ND |  CVAR_LATCH);
+	Cvar_SetDescription( sndchannels, "Number of channels." );
 	snddevice = Cvar_Get("snddevice", "/dev/dsp", CVAR_ARCHIVE_ND | CVAR_LATCH);
 
 	map_size = 0;

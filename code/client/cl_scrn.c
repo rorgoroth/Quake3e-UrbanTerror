@@ -23,13 +23,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "client.h"
 
-qboolean	scr_initialized;		// ready to draw
+static qboolean	scr_initialized;		// ready to draw
 
 cvar_t		*cl_timegraph;
-cvar_t		*cl_debuggraph;
-cvar_t		*cl_graphheight;
-cvar_t		*cl_graphscale;
-cvar_t		*cl_graphshift;
+static cvar_t		*cl_debuggraph;
+static cvar_t		*cl_graphheight;
+static cvar_t		*cl_graphscale;
+static cvar_t		*cl_graphshift;
 
 /*
 ================
@@ -500,7 +500,7 @@ void SCR_DrawFontText(float x, float y, float scale, vec4_t color, const char *t
 SCR_DrawDemoRecording
 =================
 */
-void SCR_DrawDemoRecording( void ) {
+static void SCR_DrawDemoRecording( void ) {
 	char	string[sizeof(clc.recordNameShort)+32];
 	int		pos;
 
@@ -512,9 +512,14 @@ void SCR_DrawDemoRecording( void ) {
 	}
 
 	pos = FS_FTell( clc.recordfile );
-	sprintf( string, "RECORDING %s: %ik", clc.recordNameShort, pos / 1024 );
 
-	SCR_DrawStringExt( 320 - strlen( string ) * 4, 20, 8, string, g_color_table[ ColorIndex( COLOR_WHITE ) ], qtrue, qfalse );
+	if (cl_drawRecording->integer == 1) {
+		sprintf(string, "RECORDING %s: %ik", clc.recordNameShort, pos / 1024);
+		SCR_DrawStringExt(320 - strlen(string) * 4, 20, 8, string, g_color_table[ColorIndex(COLOR_WHITE)], qtrue, qfalse);
+	} else if (cl_drawRecording->integer == 2) {
+		sprintf(string, "RECORDING: %ik", pos / 1024);
+		SCR_DrawStringExt(320 - strlen(string) * 4, 20, 8, string, g_color_table[ColorIndex(COLOR_WHITE)], qtrue, qfalse);
+	}
 }
 
 
@@ -524,7 +529,7 @@ void SCR_DrawDemoRecording( void ) {
 SCR_DrawVoipMeter
 =================
 */
-void SCR_DrawVoipMeter( void ) {
+static void SCR_DrawVoipMeter( void ) {
 	char	buffer[16];
 	char	string[256];
 	int limit, i;
@@ -574,7 +579,7 @@ static	float		values[1024];
 SCR_DebugGraph
 ==============
 */
-void SCR_DebugGraph (float value)
+void SCR_DebugGraph( float value )
 {
 	values[current] = value;
 	current = (current + 1) % ARRAY_LEN(values);
@@ -586,7 +591,7 @@ void SCR_DebugGraph (float value)
 SCR_DrawDebugGraph
 ==============
 */
-void SCR_DrawDebugGraph (void)
+static void SCR_DrawDebugGraph( void )
 {
 	int		a, x, y, w, i, h;
 	float	v;
@@ -652,7 +657,7 @@ SCR_DrawScreenField
 This will be called twice if rendering in stereo mode
 ==================
 */
-void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
+static void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 	qboolean uiFullscreen;
 
 	re.BeginFrame( stereoFrame );

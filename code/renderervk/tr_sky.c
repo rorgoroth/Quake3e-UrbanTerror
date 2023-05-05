@@ -257,7 +257,7 @@ static void ClearSkyBox (void) {
 RB_ClipSkyPolygons
 ================
 */
-void RB_ClipSkyPolygons( shaderCommands_t *input )
+static void RB_ClipSkyPolygons( const shaderCommands_t *input )
 {
 	vec3_t		p[5];	// need one extra point for clipping
 	int			i, j;
@@ -352,7 +352,7 @@ static qboolean CullPoints( vec4_t v[], const int count )
 				break;
 			}
 		}
-		// all points is completely behind at least of one frustum plane
+		// all points are completely behind at least of one frustum plane
 		if ( j == count ) {
 			return qtrue;
 		}
@@ -632,7 +632,7 @@ static void FillCloudBox( void )
 /*
 ** R_BuildCloudData
 */
-void R_BuildCloudData( shaderCommands_t *input )
+static void R_BuildCloudData( const shaderCommands_t *input )
 {
 	const shader_t *shader;
 
@@ -771,10 +771,12 @@ void RB_DrawSun( float scale, shader_t *shader ) {
 	float		size;
 	float		dist;
 	vec3_t		origin, vec1, vec2;
-	byte		sunColor[4] = { 255, 255, 255, 255 };
+	color4ub_t	sunColor;
 
 	if ( !backEnd.skyRenderedThisView )
 		return;
+
+	sunColor.u32 = 0xFFFFFFFF;
 
 #ifdef USE_VULKAN
 	vk_update_mvp( NULL );

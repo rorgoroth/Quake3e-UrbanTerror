@@ -182,6 +182,10 @@ void R_ImageList_f( void ) {
 				format = "RGBA ";
 				estSize *= 4;
 				break;
+			case VK_FORMAT_R8G8B8_UNORM:
+				format = "RGB  ";
+				estSize *= 3;
+				break;
 			case VK_FORMAT_B4G4R4A4_UNORM_PACK16:
 				format = "RGBA ";
 				estSize *= 2;
@@ -639,7 +643,7 @@ static void generate_image_upload_data( image_t *image, byte *data, Image_Upload
 			byte *p = data;
 			int i, n = width * height;
 			for ( i = 0; i < n; i++, p+=4 ) {
-				R_ColorShiftLightingBytes( p, p );
+				R_ColorShiftLightingBytes( p, p, qfalse );
 			}
 		}
 	}
@@ -739,73 +743,21 @@ static void generate_image_upload_data( image_t *image, byte *data, Image_Upload
 }
 
 
-byte *resample_image_data( const image_t *image, byte *data, const int data_size, int *bytes_per_pixel )
-{
-	byte *buffer;
-	uint16_t *p;
-	int i;
+static void upload_vk_image( image_t *image, byte *pic ) {
 
-	switch ( image->internalFormat ) {
-		case VK_FORMAT_B4G4R4A4_UNORM_PACK16:
-			buffer = (byte*) ri.Hunk_AllocateTempMemory( data_size / 2 );
-			p = (uint16_t*)buffer;
-			for ( i = 0; i < data_size; i += 4, p++ ) {
-				byte r = data[i+0];
-				byte g = data[i+1];
-				byte b = data[i+2];
-				byte a = data[i+3];
-				*p = (uint32_t)((a/255.0) * 15.0 + 0.5) |
-					((uint32_t)((r/255.0) * 15.0 + 0.5) << 4) |
-					((uint32_t)((g/255.0) * 15.0 + 0.5) << 8) |
-					((uint32_t)((b/255.0) * 15.0 + 0.5) << 12);
-			}
-			*bytes_per_pixel = 2;
-			return buffer; // must be freed after upload!
+	Image_Upload_Data upload_data;
+	int w, h;
 
-		case VK_FORMAT_A1R5G5B5_UNORM_PACK16:
-			buffer = (byte*) ri.Hunk_AllocateTempMemory( data_size / 2 );
-			p = (uint16_t*)buffer;
-			for ( i = 0; i < data_size; i += 4, p++ ) {
-				byte r = data[i+0];
-				byte g = data[i+1];
-				byte b = data[i+2];
-				*p = (uint32_t)((b/255.0) * 31.0 + 0.5) |
-					((uint32_t)((g/255.0) * 31.0 + 0.5) << 5) |
-					((uint32_t)((r/255.0) * 31.0 + 0.5) << 10) |
-					(1 << 15);
-			}
-			*bytes_per_pixel = 2;
-			return buffer; // must be freed after upload!
+	generate_image_upload_data( image, pic, &upload_data );
 
-		case VK_FORMAT_B8G8R8A8_UNORM:
-			buffer = (byte*) ri.Hunk_AllocateTempMemory( data_size );
-			for ( i = 0; i < data_size; i += 4 ) {
-				buffer[i+0] = data[i+2];
-				buffer[i+1] = data[i+1];
-				buffer[i+2] = data[i+0];
-				buffer[i+3] = data[i+3];
-			}
-			*bytes_per_pixel = 4;
-			return buffer;
-
-		default:
-			*bytes_per_pixel = 4;
-			return data;
-	}
-}
-
-
-static void upload_vk_image( Image_Upload_Data *upload_data, image_t *image ) {
-	int w = upload_data->base_level_width;
-	int h = upload_data->base_level_height;
-	int bytes_per_pixel;
-	byte *buffer;
+	w = upload_data.base_level_width;
+	h = upload_data.base_level_height;
 
 	if ( r_texturebits->integer > 16 || r_texturebits->integer == 0 || ( image->flags & IMGFLAG_LIGHTMAP ) ) {
 		image->internalFormat = VK_FORMAT_R8G8B8A8_UNORM;
 		//image->internalFormat = VK_FORMAT_B8G8R8A8_UNORM;
 	} else {
-		qboolean has_alpha = RawImage_HasAlpha( upload_data->buffer, w * h );
+		qboolean has_alpha = RawImage_HasAlpha( upload_data.buffer, w * h );
 		image->internalFormat = has_alpha ? VK_FORMAT_B4G4R4A4_UNORM_PACK16 : VK_FORMAT_A1R5G5B5_UNORM_PACK16;
 	}
 
@@ -813,15 +765,13 @@ static void upload_vk_image( Image_Upload_Data *upload_data, image_t *image ) {
 	image->view = VK_NULL_HANDLE;
 	image->descriptor = VK_NULL_HANDLE;
 
-	image->uploadWidth = upload_data->base_level_width;
-	image->uploadHeight = upload_data->base_level_height;
+	image->uploadWidth = w;
+	image->uploadHeight = h;
 
-	vk_create_image( w, h, image->internalFormat, upload_data->mip_levels, image );
-	buffer = resample_image_data( image, upload_data->buffer, upload_data->buffer_size, &bytes_per_pixel ); 
-	vk_upload_image_data( image->handle, 0, 0, w, h, upload_data->mip_levels > 1, buffer, bytes_per_pixel );
-	if ( buffer != upload_data->buffer ) {
-		ri.Hunk_FreeTempMemory( buffer );
-	}
+	vk_create_image( image, w, h, upload_data.mip_levels );
+	vk_upload_image_data( image, 0, 0, w, h, upload_data.mip_levels, upload_data.buffer, upload_data.buffer_size );
+
+	ri.Hunk_FreeTempMemory( upload_data.buffer );
 }
 
 #else // !USE_VULKAN
@@ -1058,9 +1008,7 @@ Picture data may be modified in-place during mipmap processing
 image_t *R_CreateImage( const char *name, const char *name2, byte *pic, int width, int height, imgFlags_t flags ) {
 	image_t		*image;
 	long		hash;
-#ifdef USE_VULKAN
-	Image_Upload_Data upload_data;
-#else
+#ifndef USE_VULKAN
 	GLint		glWrapClampMode;
 	GLuint		currTexture;
 	int			currTMU;
@@ -1119,11 +1067,7 @@ image_t *R_CreateImage( const char *name, const char *name2, byte *pic, int widt
 	else
 		image->wrapClampMode = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
-	generate_image_upload_data( image, pic, &upload_data );
-
-	upload_vk_image( &upload_data, image );
-
-	ri.Hunk_FreeTempMemory( upload_data.buffer );
+	upload_vk_image( image, pic );
 #else
 	if ( flags & IMGFLAG_RGB )
 		image->internalFormat = GL_RGB;
@@ -1213,7 +1157,7 @@ static const int numImageLoaders = ARRAY_LEN( imageLoaders );
 =================
 R_LoadImage
 
-Loads any of the supported image types into a cannonical
+Loads any of the supported image types into a canonical
 32 bit format.
 =================
 */
@@ -1689,12 +1633,6 @@ void R_SetColorMappings( void ) {
 	// setup the overbright lighting
 	// negative value will force gamma in windowed mode
 	tr.overbrightBits = abs( r_overBrightBits->integer );
-#ifdef USE_VULKAN
-	if ( !glConfig.deviceSupportsGamma && !vk.fboActive )
-#else
-	if ( !glConfig.deviceSupportsGamma )
-#endif
-		tr.overbrightBits = 0;		// need hardware gamma for overbright
 
 	// never overbright in windowed mode
 #ifdef USE_VULKAN
@@ -1705,7 +1643,16 @@ void R_SetColorMappings( void ) {
 		tr.overbrightBits = 0;
 		applyGamma = qfalse;
 	} else {
-		applyGamma = qtrue;
+#ifdef USE_VULKAN
+		if ( !glConfig.deviceSupportsGamma && !vk.fboActive ) {
+#else
+		if ( !glConfig.deviceSupportsGamma ) {
+#endif
+			tr.overbrightBits = 0; // need hardware gamma for overbright
+			applyGamma = qfalse;
+		} else {
+			applyGamma = qtrue;
+		}
 	}
 
 	// allow 2 overbright bits in 24 bit, but only 1 in 16 bit
@@ -1815,13 +1762,9 @@ void R_DeleteTextures( void ) {
 
 	for ( i = 0; i < tr.numImages; i++ ) {
 		img = tr.images[ i ];
+		vk_destroy_image_resources( &img->handle, &img->view );
+
 		// img->descriptor will be released with pool reset
-		if ( img->handle != VK_NULL_HANDLE ) {
-			qvkDestroyImage( vk.device, img->handle, NULL );
-			qvkDestroyImageView( vk.device, img->view, NULL );
-		}
-		img->handle = VK_NULL_HANDLE;
-		img->view = VK_NULL_HANDLE;
 	}
 #else
 	for ( i = 0; i < tr.numImages; i++ ) {
@@ -1860,7 +1803,7 @@ SKINS
 CommaParse
 
 This is unfortunate, but the skin files aren't
-compatable with our normal parsing rules.
+compatible with our normal parsing rules.
 ==================
 */
 static char *CommaParse( const char **data_p ) {

@@ -274,7 +274,7 @@ static qboolean SV_LoadIP4DB( const char *filename )
 	FS_Read( buf, len, fh );
 	FS_FCloseFile( fh );
 
-	// check integrity of loaded databse
+	// check integrity of loaded database
 	last_ip = 0;
 	num_tlds = len / 10;
 
@@ -381,7 +381,8 @@ static void SV_SaveSequences( void ) {
 
 
 static void SV_InjectLocation( const char *tld, const char *country ) {
-	char *cmd, *str;
+	const char *cmd;
+	char *str;
 	int i, n;
 	for ( i = 0; i < sv_maxclients->integer; i++ ) {
 		if ( seqs[i] != svs.clients[i].reliableSequence ) {
@@ -434,12 +435,13 @@ void SV_DirectConnect( const netadr_t *from ) {
 	int			version;
 	int			qport;
 	int			challenge;
-	char		*password;
+	const char		*password;
 	int			startIndex;
 	intptr_t	denied;
 	int			count;
+	int			server_protocol;
 	const char	*ip, *info, *v;
-	qboolean	compat = qfalse;
+	qboolean	compat;
 	qboolean	longstr;
 
 	Com_DPrintf( "SVC_DirectConnect()\n" );
@@ -519,21 +521,28 @@ void SV_DirectConnect( const netadr_t *from ) {
 	}
 	version = atoi( v );
 
+	server_protocol = com_protocol->integer;
+	if ( server_protocol == PROTOCOL_VERSION )
+	{
+		server_protocol = NEW_PROTOCOL_VERSION;
+	}
+
 	if ( version == PROTOCOL_VERSION )
 		compat = qtrue;
 	else
 	{
-		if ( version != NEW_PROTOCOL_VERSION )
+		if ( version != server_protocol )
 		{
 			// avoid excessive outgoing traffic
 			if ( !SVC_RateLimit( &bucket, 10, 200 ) )
 			{
 				NET_OutOfBandPrint( NS_SERVER, from, "print\nServer uses protocol version %i "
-					"(yours is %i).\n", NEW_PROTOCOL_VERSION, version );
+					"(yours is %i).\n", server_protocol, version );
 			}
 			Com_DPrintf( "    rejected connect from version %i\n", version );
 			return;
 		}
+		compat = qfalse;
 	}
 
 	v = Info_ValueForKey( userinfo, "qport" );
@@ -548,11 +557,16 @@ void SV_DirectConnect( const netadr_t *from ) {
 	qport = atoi( Info_ValueForKey( userinfo, "qport" ) );
 
 	// if "client" is present in userinfo and it is a modern client
-	// then assume it can properly decode long strings
-	if ( !compat && *Info_ValueForKey( userinfo, "client" ) != '\0' )
+	// then assume it can properly decode long strings and protocol extensions
+	if ( !compat && *Info_ValueForKey( userinfo, "client" ) != '\0' ) {
 		longstr = qtrue;
-	else
+	} else {
 		longstr = qfalse;
+		if ( com_protocolCompat ) {
+			// enforce dm68-compatible stream for other clients
+			compat = qtrue;
+		}
+	}
 
 	// we don't need these keys after connection, release some space in userinfo
 	Info_RemoveKey( userinfo, "challenge" );
@@ -743,7 +757,11 @@ gotnewcl:
 	}
 
 	// send the connect packet to the client
-	NET_OutOfBandPrint( NS_SERVER, from, "connectResponse %d", challenge );
+	if ( longstr /*&& !compat*/ ) {
+		NET_OutOfBandPrint( NS_SERVER, from, "connectResponse %d %d", challenge, server_protocol );
+	} else {
+		NET_OutOfBandPrint( NS_SERVER, from, "connectResponse %d", challenge );
+	}
 
 	Com_DPrintf( "Going from CS_FREE to CS_CONNECTED for %s\n", newcl->name );
 
@@ -794,7 +812,7 @@ void SV_FreeClient(client_t *client)
 SV_DropClient
 
 Called when the player is totally leaving the server, either willingly
-or unwillingly.  This is NOT called if the entire server is quiting
+or unwillingly.  This is NOT called if the entire server is quitting
 or crashing -- SV_FinalMessage() will handle that
 =====================
 */
@@ -1290,7 +1308,7 @@ static int SV_WriteDownloadToClient( client_t *cl )
 	if(!cl->download)
 	{
 		qboolean gamePak = qfalse;
-	
+
  		// Chop off filename extension.
 		Q_strncpyz( pakbuf, cl->downloadName, sizeof( pakbuf ) );
 		pakptr = strrchr( pakbuf, '.' );
@@ -1860,7 +1878,7 @@ void SV_PrintLocations_f( client_t *client ) {
 	max_namelength = 4; // strlen( "name" )
 	max_ctrylength = 7; // strlen( "country" )
 
-	// first pass: save and determine max.legths of name/address fields
+	// first pass: save and determine max.lengths of name/address fields
 	for ( i = 0, cl = svs.clients ; i < sv_maxclients->integer ; i++, cl++ )
 	{
 		if ( cl->state == CS_FREE )
