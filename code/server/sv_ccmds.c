@@ -176,7 +176,7 @@ static client_t *SV_GetPlayerByNum( void ) {
 	}
 
 	cl = &svs.clients[idnum];
-	if ( !cl->state ) {
+	if ( cl->state < CS_CONNECTED ) {
 		Com_Printf( "Client %i is not active\n", idnum );
 		return NULL;
 	}
