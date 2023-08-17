@@ -58,7 +58,7 @@ typedef struct {
 	vec4_t	color;
 
 	int		viswidth;
-	int		vispage;		
+	int		vispage;
 
 	qboolean newline;
 
@@ -244,7 +244,7 @@ static void Con_Clear_f( void ) {
 	Con_Bottom();		// go to end
 }
 
-						
+
 /*
 ================
 Con_Dump_f
@@ -302,7 +302,7 @@ static void Con_Dump_f( void )
 	// write the remaining lines
 	buffer[ bufferlen - 1 ] = '\0';
 
-	for ( i = 0; i < n ; i++, l++ ) 
+	for ( i = 0; i < n ; i++, l++ )
 	{
 		line = currentCon->text + (l % currentCon->totallines) * currentCon->linewidth;
 		// store line
@@ -324,7 +324,7 @@ static void Con_Dump_f( void )
 	FS_FCloseFile( f );
 }
 
-						
+
 /*
 ================
 Con_ClearNotify
@@ -332,7 +332,7 @@ Con_ClearNotify
 */
 void Con_ClearNotify( void ) {
 	int		i;
-	
+
 	for ( i = 0 ; i < NUM_CON_TIMES ; i++ ) {
 		currentCon->times[i] = 0;
 	}
@@ -408,16 +408,16 @@ void Con_CheckResize( console_t *console )
 			numchars = console->linewidth;
 
 		if ( oldcurrent > oldtotallines )
-			numlines = oldtotallines;	
+			numlines = oldtotallines;
 		else
-			numlines = oldcurrent + 1;	
+			numlines = oldcurrent + 1;
 
 		if ( numlines > console->totallines )
 			numlines = console->totallines;
 
 		Com_Memcpy( tbuf, console->text, CON_TEXTSIZE * sizeof( short ) );
 
-		for ( i = 0; i < CON_TEXTSIZE; i++ ) 
+		for ( i = 0; i < CON_TEXTSIZE; i++ )
 			console->text[i] = (ColorIndex(COLOR_WHITE)<<8) | ' ';
 
 		for ( i = 0; i < numlines; i++ )
@@ -471,7 +471,7 @@ void Cmd_CompleteTxtName( char *args, int argNum ) {
 Con_Init
 ================
 */
-void Con_Init( void ) 
+void Con_Init( void )
 {
 	con_notifytime = Cvar_Get( "con_notifytime", "3", 0 );
 	Cvar_SetDescription( con_notifytime, "Defines how long messages (from players or the system) are on the screen (in seconds)." );
@@ -491,7 +491,6 @@ void Con_Init( void )
 
 	Cmd_AddCommand( "clear", Con_Clear_f );
 	Cmd_AddCommand( "condump", Con_Dump_f );
-	Cmd_SetCommandCompletionFunc( "condump", Cmd_CompleteTxtName );
 	Cmd_AddCommand( "toggleconsole", Con_ToggleConsole_f );
 	Cmd_AddCommand( "messagemode", Con_MessageMode_f );
 	Cmd_AddCommand( "messagemode2", Con_MessageMode2_f );
@@ -527,7 +526,7 @@ void Con_Shutdown( void )
 Con_Fixup
 ===============
 */
-void Con_Fixup(console_t *console) 
+void Con_Fixup(console_t *console)
 {
 	int filled;
 
@@ -554,7 +553,7 @@ Con_Linefeed
 Move to newline only when we _really_ need this
 ===============
 */
-void Con_NewLine(console_t *console) 
+void Con_NewLine(console_t *console)
 {
 	short *s;
 	int i;
@@ -565,7 +564,7 @@ void Con_NewLine(console_t *console)
 	console->current++;
 
 	s = &console->text[ ( console->current % console->totallines ) * console->linewidth ];
-	for ( i = 0; i < console->linewidth ; i++ ) 
+	for ( i = 0; i < console->linewidth ; i++ )
 		*s++ = (ColorIndex(COLOR_WHITE)<<8) | ' ';
 
 	console->x = 0;
@@ -706,11 +705,11 @@ void CL_ConsolePrint( const char *txt ) {
 	for (i = 0; i < numConsoles; i++) {
 		if ( !consoles[i].initialized ) {
 			static cvar_t null_cvar = { 0 };
-			consoles[i].color[0] = 
-			  consoles[i].color[1] = 
+			consoles[i].color[0] =
+			  consoles[i].color[1] =
 			  consoles[i].color[2] =
 			  consoles[i].color[3] = 1.0f;
-			consoles[i].viswidth = -9999;		
+			consoles[i].viswidth = -9999;
 			cls.con_factor = 1.0f;
 			con_scale = &null_cvar;
 			con_scale->value = 1.0f;
@@ -720,7 +719,7 @@ void CL_ConsolePrint( const char *txt ) {
 		}
 	}
 
-	
+
 	if (txt[0] == 17 || txt[0] == 18) {
 	  isFrag = qtrue;
 	  txt++;
@@ -728,7 +727,7 @@ void CL_ConsolePrint( const char *txt ) {
 	  isChat = qtrue;
 	  txt++;
 	}
-	
+
 	// add timestamp
 	if (consoles[CONSOLE_ALL].x == 0 && con_timestamp && con_timestamp->integer) {
 		qtime_t	now;
@@ -928,7 +927,7 @@ void Con_DrawSolidConsole( float frac ) {
 		// custom console background color
 		if ( cl_conColor->string[0] ) {
 			// track changes
-			if ( strcmp( cl_conColor->string, conColorString ) ) 
+			if ( strcmp( cl_conColor->string, conColorString ) )
 			{
 				Q_strncpyz( conColorString, cl_conColor->string, sizeof( conColorString ) );
 				Q_strncpyz( buf, cl_conColor->string, sizeof( buf ) );
@@ -958,10 +957,10 @@ void Con_DrawSolidConsole( float frac ) {
 	int tabHeight;
 	int horizOffset;
 	int vertOffset;
-	
+
 	horizOffset = 0;
 	vertOffset = frac * ((SCREEN_HEIGHT * con_size->integer) / 100);
-	
+
 	float old;
 
 	for (i = 0; i < numConsoles; i++) {
@@ -991,7 +990,7 @@ void Con_DrawSolidConsole( float frac ) {
 
 	  // bottom border
 	  SCR_FillRect(horizOffset, vertOffset + tabHeight - 1, tabWidth, 1, color);
-		
+
 	  //left border
 	  if (i && currentCon == &consoles[i])
 		SCR_FillRect(horizOffset, vertOffset, 1, tabHeight, color);
@@ -1042,13 +1041,13 @@ void Con_DrawSolidConsole( float frac ) {
 	}
 
 #ifdef USE_CURL
-	if ( download.progress[ 0 ] ) 
+	if ( download.progress[ 0 ] )
 	{
 		currentColorIndex = ColorIndex( COLOR_CYAN );
 		re.SetColor( g_color_table[ currentColorIndex ] );
 
 		i = strlen( download.progress );
-		for ( x = 0 ; x < i ; x++ ) 
+		for ( x = 0 ; x < i ; x++ )
 		{
 			SCR_DrawSmallChar( ( x + 1 ) * smallchar_width,
 				lines - smallchar_height, download.progress[x] );
@@ -1130,14 +1129,14 @@ Con_RunConsole
 Scroll it up or down
 ==================
 */
-void Con_RunConsole( void ) 
+void Con_RunConsole( void )
 {
 	// decide on the destination height of the console
 	if ( Key_GetCatcher( ) & KEYCATCH_CONSOLE )
 		currentCon->finalFrac = 0.5;	// half screen
 	else
 		currentCon->finalFrac = 0.0;	// none visible
-	
+
 	// scroll towards the destination height
 	if ( currentCon->finalFrac < currentCon->displayFrac )
 	{
@@ -1161,7 +1160,7 @@ void Con_PageUp( int lines )
 		lines = currentCon->vispage - 2;
 
 	currentCon->display -= lines;
-	
+
 	Con_Fixup(currentCon);
 }
 
