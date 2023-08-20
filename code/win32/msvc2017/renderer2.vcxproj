@@ -155,6 +155,7 @@ cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\tonemap_vp.glsl .\bu
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -200,6 +201,7 @@ cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\tonemap_vp.glsl .\bu
 </Command>
     </PreBuildEvent>
     <Midl>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TargetEnvironment>X64</TargetEnvironment>
     </Midl>
     <ClCompile>
@@ -245,6 +247,7 @@ cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\pshadow_vp.glsl .\bu
 cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\shadowfill_fp.glsl .\build\dynamic\renderer2\shadowfill_fp.c
 cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\shadowfill_vp.glsl .\build\dynamic\renderer2\shadowfill_vp.c
 cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\shadowmask_fp.glsl .\build\dynamic\renderer2\shadowmask_fp.c
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
 cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\shadowmask_vp.glsl .\build\dynamic\renderer2\shadowmask_vp.c
 cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\ssao_fp.glsl .\build\dynamic\renderer2\ssao_fp.c
 cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\ssao_vp.glsl .\build\dynamic\renderer2\ssao_vp.c
@@ -321,6 +324,7 @@ cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\tonemap_vp.glsl .\bu
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <FloatingPointExceptions>true</FloatingPointExceptions>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -381,6 +385,7 @@ cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\tonemap_vp.glsl .\bu
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <FloatingPointExceptions>true</FloatingPointExceptions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -429,6 +434,7 @@ cscript.exe /nologo glsl_stringify.vbs ..\..\renderer2\glsl\tonemap_vp.glsl .\bu
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;_CRT_SECURE_NO_DEPRECATE;USE_RENDERER2;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>

@@ -265,7 +265,7 @@ LExit:
 
 #endif // id386
 
-#if idx64 && defined (_MSC_VER) && defined(USE_WIN32_ASM)
+#if idx64 && (!defined (_MSC_VER) || defined(USE_WIN32_ASM))
 void S_WriteLinearBlastStereo16_SSE_x64( int*, short*, int );
 #endif
 
@@ -299,7 +299,7 @@ static void S_TransferStereo16( unsigned long *pbuf, portable_samplepair_t input
 			S_WriteLinearBlastStereo16_MMX();
 		else
 #endif
-#if idx64 && defined (_MSC_VER) && defined (USE_WIN32_ASM)
+#if idx64 && (!defined (_MSC_VER) || defined (USE_WIN32_ASM))
 		S_WriteLinearBlastStereo16_SSE_x64( snd_p, snd_out, snd_linear_count );
 #else
 		S_WriteLinearBlastStereo16();
