@@ -438,7 +438,7 @@ ifdef MINGW
 
   BINEXT = .exe
 
-  LDFLAGS = -mwindows -Wl,--dynamicbase -Wl,--nxcompat
+  LDFLAGS += -mwindows -Wl,--dynamicbase -Wl,--nxcompat
   LDFLAGS += -Wl,--gc-sections -fvisibility=hidden
   LDFLAGS += -lwsock32 -lgdi32 -lwinmm -lole32 -lws2_32 -lpsapi -lcomctl32
   LDFLAGS += -flto
@@ -495,7 +495,7 @@ ifeq ($(COMPILE_PLATFORM),darwin)
   SHLIBCFLAGS = -fPIC -fvisibility=hidden
   SHLIBLDFLAGS = -dynamiclib $(LDFLAGS)
 
-  LDFLAGS =
+  LDFLAGS +=
 
   ifneq ($(SDL_INCLUDE),)
     BASE_CFLAGS += $(SDL_INCLUDE)
@@ -554,7 +554,7 @@ else
   SHLIBCFLAGS = -fPIC -fvisibility=hidden
   SHLIBLDFLAGS = -shared $(LDFLAGS)
 
-  LDFLAGS = -lm
+  LDFLAGS += -lm
   LDFLAGS += -Wl,--gc-sections -fvisibility=hidden
 
   ifeq ($(USE_SDL),1)
