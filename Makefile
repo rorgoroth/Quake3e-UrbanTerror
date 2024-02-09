@@ -417,19 +417,15 @@ ifdef MINGW
     $(error Cannot find a suitable cross compiler for $(PLATFORM))
   endif
 
-  BASE_CFLAGS += -Wall -Wimplicit -Wstrict-prototypes -DUSE_ICON -DMINGW=1
-
-  BASE_CFLAGS += -Wno-unused-result -fvisibility=hidden
-  BASE_CFLAGS += -ffunction-sections -flto
+  BASE_CFLAGS += -Wall -Wimplicit -Wstrict-prototypes -Wno-unused-result
+  BASE_CFLAGS += -DUSE_ICON -DMINGW=1
 
   ifeq ($(ARCH),x86_64)
     ARCHEXT = .x64
     BASE_CFLAGS += -m64
-    OPTIMIZE = -O2 -ffast-math
   endif
   ifeq ($(ARCH),x86)
     BASE_CFLAGS += -m32
-    OPTIMIZE = -O2 -march=i586 -mtune=i686 -ffast-math
   endif
 
   SHLIBEXT = dll
@@ -439,9 +435,7 @@ ifdef MINGW
   BINEXT = .exe
 
   LDFLAGS += -mwindows -Wl,--dynamicbase -Wl,--nxcompat
-  LDFLAGS += -Wl,--gc-sections -fvisibility=hidden
   LDFLAGS += -lwsock32 -lgdi32 -lwinmm -lole32 -lws2_32 -lpsapi -lcomctl32
-  LDFLAGS += -flto
 
   CLIENT_LDFLAGS=$(LDFLAGS)
 
