@@ -4177,8 +4177,8 @@ void CL_Init( void ) {
 	cl_forceavidemo = Cvar_Get ("cl_forceavidemo", "0", 0);
 
 	cl_aviPipeFormat = Cvar_Get( "cl_aviPipeFormat",
-		"-preset medium -crf 23 -vcodec libx264 -flags +cgop -pix_fmt yuvj420p "
-		"-bf 2 -codec:a aac -strict -2 -b:a 160k -movflags faststart",
+		"-preset medium -crf 23 -c:v libx264 -flags +cgop -pix_fmt yuvj420p "
+        "-bf 2 -c:a aac -strict -2 -b:a 160k -movflags faststart",
 		CVAR_ARCHIVE );
 
 	rconAddress = Cvar_Get ("rconAddress", "", 0);
