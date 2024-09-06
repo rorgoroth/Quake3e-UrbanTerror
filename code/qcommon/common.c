@@ -4370,9 +4370,7 @@ void Com_Frame( qboolean noDelay ) {
 		}
 		Com_EventLoop();
 
-		if ( !Cbuf_Wait() ) {
-			Cbuf_Execute();
-		}
+		Cbuf_Execute();
 
 		//
 		// client side
@@ -4390,6 +4388,8 @@ void Com_Frame( qboolean noDelay ) {
 #endif
 
 	NET_FlushPacketQueue( 0 );
+
+	Cbuf_Wait();
 
 	//
 	// report timing information
