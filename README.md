@@ -206,7 +206,7 @@ In order to use this functionality you need to install ffmpeg package (on linux)
 
 Use **\\cl\_aviPipeFormat** to control encoder parameters passed to ffmpeg, see ffmpeg documentation for details, default value is set according to YouTube recommendations:
 
-\-preset medium -crf 23 -vcodec libx264 -flags +cgop -pix\_fmt yuv420p -bf 2 -codec:a aac -strict -2 -b:a 160k -r:a 22050 -movflags faststart
+\-preset medium -crf 23 -c:v libx264 -flags +cgop -pix\_fmt yuvj420p -bf 2 -c:a aac -strict -2 -b:a 160k -movflags faststart
 
 If you need higher bitrate - decrease **\-crf** parameter, if you need better compression at cost of cpu time - set **\-preset** to _slow_ or _slower_.
 
@@ -262,10 +262,3 @@ Requires **[\\r\_fbo 1](#r_fbo)**, available operation modes via **\\r\_bloom** 
 **\\r\_bloom\_filter\_size** - filter size of Gaussian Blur effect for each pass, bigger filter size means stronger and wider blur, lower value are faster, default is 6
 
 **\\r\_bloom\_reflection** - bloom lens reflection effect, value is an intensity factor of the effect, negative value means blend only reflection and skip main bloom texture
-
-
-* * *
-
-End Of Document
-
-* * *
