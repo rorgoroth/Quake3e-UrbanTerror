@@ -556,6 +556,7 @@ void SV_SpawnServer( const char *mapname, qboolean killBots ) {
 					continue;
 				}
 				isBot = qtrue;
+		Cbuf_Wait();
 			}
 			else {
 				isBot = qfalse;
@@ -593,6 +594,7 @@ void SV_SpawnServer( const char *mapname, qboolean killBots ) {
 	}
 
 	// run another frame to allow things to look at all the players
+	Cbuf_Wait();
 	sv.time += 100;
 	VM_Call( gvm, 1, GAME_RUN_FRAME, sv.time );
 	SV_BotFrame( sv.time );
