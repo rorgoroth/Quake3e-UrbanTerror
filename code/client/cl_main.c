@@ -721,7 +721,7 @@ static void CL_CompleteRecordName(const char *args, int argNum )
 #ifdef USE_URT_DEMO
         Com_sprintf( demoExt, sizeof( demoExt ), ".urtdemo" );
 #else
-		Com_sprintf( demoExt, sizeof( demoExt ), ".dm_%d", PROTOCOL_VERSION );
+		Com_sprintf( demoExt, sizeof( demoExt ), "." DEMOEXT "%d", com_protocol->integer );
 #endif
 		Field_CompleteFilename( "demos", demoExt, qtrue, FS_MATCH_EXTERN | FS_MATCH_STICK );
 	}
