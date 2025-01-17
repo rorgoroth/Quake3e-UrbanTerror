@@ -1196,7 +1196,7 @@ void SV_ClientEnterWorld( client_t *client ) {
 	ent->s.number = clientNum;
 	client->gentity = ent;
 
-	client->deltaMessage = client->netchan.outgoingSequence - (PACKET_BACKUP + 1); // force delta reset
+	client->deltaActive = qfalse;
 	client->lastSnapshotTime = svs.time - 9999; // generate a snapshot immediately
 
 	// call the game begin function
@@ -2187,11 +2187,8 @@ static void SV_UserMove( client_t *cl, msg_t *msg, qboolean delta ) {
 	usercmd_t	cmds[MAX_PACKET_USERCMDS], *cmd;
 	const usercmd_t *oldcmd;
 
-	if ( delta ) {
-		cl->deltaMessage = cl->messageAcknowledge;
-	} else {
-		cl->deltaMessage = cl->netchan.outgoingSequence - ( PACKET_BACKUP + 1 ); // force delta reset
-	}
+	cl->deltaActive = delta;
+	cl->deltaMessage = cl->messageAcknowledge;
 
 	cmdCount = MSG_ReadByte( msg );
 
@@ -2254,7 +2251,7 @@ static void SV_UserMove( client_t *cl, msg_t *msg, qboolean delta ) {
 	}
 
 	if ( cl->state != CS_ACTIVE ) {
-		cl->deltaMessage = cl->netchan.outgoingSequence - ( PACKET_BACKUP + 1 ); // force delta reset
+		cl->deltaActive = qfalse;
 		return;
 	}
 
