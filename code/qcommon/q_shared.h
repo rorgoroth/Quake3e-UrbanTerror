@@ -26,12 +26,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // q_shared.h -- included first by ALL program modules.
 // A user mod should never modify this file
 
-#define Q3_VERSION              "Q3e-URT"
+#define Q3_VERSION              "ioQ3 1.35 urt 4.3.4"
 #ifndef SVN_VERSION
   #define SVN_VERSION Q3_VERSION
 #endif
-#define CLIENT_WINDOW_TITLE     "Urban Terror Slim"
-#define CONSOLE_WINDOW_TITLE    "Urt Console"
+#define CLIENT_WINDOW_TITLE     "Urban Terror Quake3e"
+#define CONSOLE_WINDOW_TITLE    "Urban Terror Console"
 
 #define DEFAULT_GAME            "q3ut4"
 
