@@ -10,7 +10,7 @@
 #define MIN_SWAPCHAIN_IMAGES_MAILBOX 3
 
 #define MAX_VK_SAMPLERS 32
-#define MAX_VK_PIPELINES (1024 + 128)
+#define MAX_VK_PIPELINES ((1024 + 128)*2)
 
 #define VERTEX_BUFFER_SIZE (4 * 1024 * 1024)
 #define IMAGE_CHUNK_SIZE (32 * 1024 * 1024)
@@ -147,8 +147,8 @@ typedef struct {
 } Vk_Sampler_Def;
 
 typedef enum {
-	RENDER_PASS_SCREENMAP = 0,
-	RENDER_PASS_MAIN,
+	RENDER_PASS_MAIN = 0,
+	RENDER_PASS_SCREENMAP,
 	RENDER_PASS_POST_BLOOM,
 	RENDER_PASS_COUNT
 } renderPass_t;
@@ -580,6 +580,8 @@ typedef struct {
 
 	uint32_t maxBoundDescriptorSets;
 
+	VkFence aux_fence;
+
 } Vk_Instance;
 
 typedef struct {
@@ -607,7 +609,6 @@ typedef struct {
 	VkBuffer staging_buffer;
 	VkDeviceMemory staging_buffer_memory;
 	VkDeviceSize staging_buffer_size;
-	VkDeviceSize staging_buffer_offset;
 	byte *staging_buffer_ptr; // pointer to mapped staging buffer
 
 	//
