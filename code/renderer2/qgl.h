@@ -44,10 +44,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define GL_NUM_EXTENSIONS                 0x821D
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
-#elif defined(__APPLE__)
-#define GL_NUM_EXTENSIONS                 0x821D
-#include <OpenGL/gl.h>
-#include <OpenGL/glext.h>
 #endif
 
 #ifndef APIENTRY
