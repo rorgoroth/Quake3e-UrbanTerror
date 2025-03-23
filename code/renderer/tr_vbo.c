@@ -375,6 +375,28 @@ static qboolean isStaticRGBgen( colorGen_t cgen )
 }
 
 
+static qboolean isStaticTCmod( const textureBundle_t *bundle )
+{
+	int i;
+
+	for ( i = 0; i < bundle->numTexMods; i++ ) {
+		switch ( bundle->texMods[i].type ) {
+		case TMOD_NONE:
+		case TMOD_SCALE:
+		case TMOD_TRANSFORM:
+		case TMOD_OFFSET:
+		case TMOD_SCALE_OFFSET:
+		case TMOD_OFFSET_SCALE:
+			break;
+		default:
+			return qfalse;
+		}
+	}
+
+	return qtrue;
+}
+
+
 static qboolean isStaticTCgen( shaderStage_t *stage, int bundle )
 {
 	switch ( stage->bundle[bundle].tcGen )
@@ -401,28 +423,6 @@ static qboolean isStaticTCgen( shaderStage_t *stage, int bundle )
 		default:
 			return qfalse;
 	}
-}
-
-
-static qboolean isStaticTCmod( const textureBundle_t *bundle )
-{
-	int i;
-
-	for ( i = 0; i < bundle->numTexMods; i++ ) {
-		switch ( bundle->texMods[i].type ) {
-		case TMOD_NONE:
-		case TMOD_SCALE:
-		case TMOD_TRANSFORM:
-		case TMOD_OFFSET:
-		case TMOD_SCALE_OFFSET:
-		case TMOD_OFFSET_SCALE:
-			break;
-		default:
-			return qfalse;
-		}
-	}
-
-	return qtrue;
 }
 
 
