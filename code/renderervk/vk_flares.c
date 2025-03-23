@@ -296,6 +296,7 @@ static void RB_TestFlare( flare_t *f ) {
 	float			fade;
 	float			*m;
 	uint32_t		offset;
+	int				i;
 
 	backEnd.pc.c_flareTests++;
 
