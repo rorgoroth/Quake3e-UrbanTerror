@@ -344,14 +344,14 @@ static void RB_TestFlare( flare_t *f ) {
 #ifdef USE_VBO
 	tess.vboIndex = 0;
 #endif
+	// invalidate descriptors
+	for ( i = 0; i < VK_DESC_COUNT; i++ ) {
+		vk_reset_descriptor( i );
+	}
 	// render test dot
 	vk_bind_pipeline( vk.dot_pipeline );
-	vk_reset_descriptor( 0 );
-	vk_update_descriptor( 0, vk.storage.descriptor );
-	vk_update_descriptor_offset( 0, offset );
-
 	vk_bind_geometry( TESS_XYZ );
-	vk_draw_geometry( DEPTH_RANGE_NORMAL, qfalse );
+	vk_draw_dot( offset );
 
 	//Com_Memcpy( vk_world.modelview_transform, modelMatrix_original, sizeof( modelMatrix_original ) );
 	//vk_update_mvp( NULL );

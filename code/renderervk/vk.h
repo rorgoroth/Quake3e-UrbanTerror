@@ -14,7 +14,7 @@
 
 #define VERTEX_BUFFER_SIZE (4 * 1024 * 1024)
 #define IMAGE_CHUNK_SIZE (32 * 1024 * 1024)
-#define MAX_IMAGE_CHUNKS 48
+#define MAX_IMAGE_CHUNKS 56
 
 #define NUM_COMMAND_BUFFERS 2	// number of command buffers / render semaphores / framebuffer sets
 
@@ -36,6 +36,10 @@
 #define VK_DESC_TEXTURE2     3
 #define VK_DESC_FOG_COLLAPSE 4
 #define VK_DESC_COUNT        5
+
+#define VK_DESC_TEXTURE_BASE VK_DESC_TEXTURE0
+#define VK_DESC_FOG_ONLY     VK_DESC_TEXTURE1
+#define VK_DESC_FOG_DLIGHT   VK_DESC_TEXTURE1
 
 typedef enum {
 	TYPE_COLOR_BLACK,
@@ -323,8 +327,8 @@ typedef struct vk_tess_s {
 		uint32_t		offset[2]; // 0 (uniform) and 5 (storage)
 	} descriptor_set;
 
-	Vk_Depth_Range depth_range;
-	VkPipeline last_pipeline;
+	Vk_Depth_Range		        depth_range;
+	VkPipeline			last_pipeline;
 
 	uint32_t num_indexes; // value from most recent vk_bind_index() call
 
