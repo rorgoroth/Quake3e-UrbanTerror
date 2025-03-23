@@ -38,9 +38,10 @@ USE_SYSTEM_VORBIS = 0
 USE_VULKAN       = 1
 USE_OPENGL       = 1
 USE_OPENGL2      = 0
+USE_OPENGL_API   = 1
 USE_SYSTEM_JPEG  = 0
 USE_VULKAN_API   = 1
-USE_Q3KEY	     = 1
+USE_Q3KEY	 = 1
 USE_URT_DEMO     = 1
 
 
@@ -52,7 +53,7 @@ DNAME            = quake3e.ded
 RENDERER_PREFIX  = $(CNAME)
 
 # valid options: opengl, vulkan, opengl2
-RENDERER_DEFAULT = opengl
+RENDERER_DEFAULT = vulkan
 
 
 ifeq ($(V),1)
@@ -75,6 +76,8 @@ endif
 
 ifeq ($(COMPILE_PLATFORM),darwin)
   USE_SDL=1
+  USE_LOCAL_HEADERS=1
+  USE_RENDERER_DLOPEN = 0
 endif
 
 ifeq ($(COMPILE_PLATFORM),cygwin)
@@ -358,12 +361,9 @@ ifeq ($(USE_Q3KEY),1)
 BASE_CFLAGS += -DUSE_Q3KEY
 endif
 
-
 ifeq ($(USE_URT_DEMO),1)
 BASE_CFLAGS += -DUSE_URT_DEMO
 endif
-
-
 
 ARCHEXT=
 
@@ -421,15 +421,19 @@ ifdef MINGW
     $(error Cannot find a suitable cross compiler for $(PLATFORM))
   endif
 
-  BASE_CFLAGS += -Wall -Wimplicit -Wstrict-prototypes -Wno-unused-result
-  BASE_CFLAGS += -DUSE_ICON -DMINGW=1
+  BASE_CFLAGS += -Wall -Wimplicit -Wstrict-prototypes -DUSE_ICON -DMINGW=1
+
+  BASE_CFLAGS += -Wno-unused-result -fvisibility=hidden
+  BASE_CFLAGS += -ffunction-sections -flto
 
   ifeq ($(ARCH),x86_64)
     ARCHEXT = .x64
     BASE_CFLAGS += -m64
+    OPTIMIZE = -O2 -ffast-math
   endif
   ifeq ($(ARCH),x86)
     BASE_CFLAGS += -m32
+    OPTIMIZE = -O2 -march=i586 -mtune=i686 -ffast-math
   endif
 
   SHLIBEXT = dll
@@ -440,6 +444,7 @@ ifdef MINGW
 
   LDFLAGS += -mwindows -Wl,--dynamicbase -Wl,--nxcompat
   LDFLAGS += -lwsock32 -lgdi32 -lwinmm -lole32 -lws2_32 -lpsapi -lcomctl32
+  LDFLAGS += -Wl,--gc-sections -fvisibility=hidden -flto
 
   CLIENT_LDFLAGS=$(LDFLAGS)
 
@@ -487,20 +492,40 @@ ifeq ($(COMPILE_PLATFORM),darwin)
 
   BASE_CFLAGS += -Wno-unused-result
 
+  BASE_CFLAGS += -DMACOS_X
+
   OPTIMIZE = -O2 -fvisibility=hidden
 
   SHLIBEXT = dylib
   SHLIBCFLAGS = -fPIC -fvisibility=hidden
   SHLIBLDFLAGS = -dynamiclib $(LDFLAGS)
 
+  ARCHEXT = .$(ARCH)
+
   LDFLAGS +=
 
+  ifeq ($(ARCH),x86_64)
+    BASE_CFLAGS += -arch x86_64
+    LDFLAGS += -arch x86_64
+  endif
+  ifeq ($(ARCH),aarch64)
+    BASE_CFLAGS += -arch arm64
+    LDFLAGS += -arch arm64
+  endif
+
+  ifeq ($(USE_LOCAL_HEADERS),1)
+    MACLIBSDIR=$(MOUNT_DIR)/libsdl/macosx
+    BASE_CFLAGS += -I$(SDLHDIR)
+    CLIENT_LDFLAGS += $(MACLIBSDIR)/libSDL2-2.0.0.dylib
+    CLIENT_EXTRA_FILES += $(MACLIBSDIR)/libSDL2-2.0.0.dylib
+  else
   ifneq ($(SDL_INCLUDE),)
     BASE_CFLAGS += $(SDL_INCLUDE)
     CLIENT_LDFLAGS = $(SDL_LIBS)
   else
     BASE_CFLAGS += -I/Library/Frameworks/SDL2.framework/Headers
-    CLIENT_LDFLAGS = -F/Library/Frameworks -framework SDL2
+    CLIENT_LDFLAGS += -F/Library/Frameworks -framework SDL2
+  endif
   endif
 
   ifeq ($(USE_SYSTEM_JPEG),1)
