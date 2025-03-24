@@ -4883,6 +4883,7 @@ void Com_RandomBytes( byte *string, int len )
 }
 
 
+#if 0
 static qboolean strgtr(const char *s0, const char *s1) {
 	int l0, l1, i;
 
@@ -4903,6 +4904,7 @@ static qboolean strgtr(const char *s0, const char *s1) {
 	}
 	return qfalse;
 }
+#endif
 
 
 /*
