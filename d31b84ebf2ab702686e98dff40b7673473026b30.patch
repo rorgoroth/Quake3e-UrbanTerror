@@ -1,0 +1,868 @@
+From d31b84ebf2ab702686e98dff40b7673473026b30 Mon Sep 17 00:00:00 2001
+From: ec- <tweels@gmail.com>
+Date: Sun, 20 Apr 2025 18:32:34 +0300
+Subject: [PATCH] Vulkan: implement image upload queue Renderers: clip
+ denormalized normals if possible
+
+---
+ code/renderer/tr_backend.c |   1 +
+ code/renderer/tr_bsp.c     |  46 ++++++-
+ code/renderer/tr_curve.c   |   7 +-
+ code/renderer/tr_local.h   |   2 +
+ code/renderervk/tr_bsp.c   |  47 +++++--
+ code/renderervk/tr_curve.c |   7 +-
+ code/renderervk/tr_init.c  |   5 +-
+ code/renderervk/tr_local.h |   2 +
+ code/renderervk/vk.c       | 263 ++++++++++++++++++++++++++++++++++---
+ code/renderervk/vk.h       |  20 +++
+ 10 files changed, 360 insertions(+), 40 deletions(-)
+
+diff --git a/code/renderer/tr_backend.c b/code/renderer/tr_backend.c
+index 9f57a85b1..3e10acb0c 100644
+--- a/code/renderer/tr_backend.c
++++ b/code/renderer/tr_backend.c
+@@ -1031,6 +1031,7 @@ void RE_UploadCinematic( int w, int h, int cols, int rows, byte *data, int clien
+ 
+ 	if ( !tr.scratchImage[ client ] ) {
+ 		tr.scratchImage[ client ] = R_CreateImage( va( "*scratch%i", client ), NULL, data, cols, rows, IMGFLAG_CLAMPTOEDGE | IMGFLAG_RGB | IMGFLAG_NOSCALE );
++		return;
+ 	}
+ 
+ 	image = tr.scratchImage[ client ];
+diff --git a/code/renderer/tr_bsp.c b/code/renderer/tr_bsp.c
+index 410c6cdef..77d724f5a 100644
+--- a/code/renderer/tr_bsp.c
++++ b/code/renderer/tr_bsp.c
+@@ -91,6 +91,22 @@ static void HSVtoRGB( float h, float s, float v, float rgb[3] )
+ }
+ 
+ 
++/*
++===============
++R_ClampDenorm
++
++Clamp fp values that may result in denormalization after further multiplication
++===============
++*/
++float R_ClampDenorm( float v ) {
++	if ( fabsf( v ) > 0.0f && fabsf( v ) < 1e-9f ) {
++		return 0.0f;
++	} else {
++		return v;
++	}
++}
++
++
+ /*
+ ===============
+ R_ColorShiftLightingBytes
+@@ -417,7 +433,7 @@ static void R_LoadLightmaps( const lump_t *l ) {
+ 
+ 	if ( r_mergeLightmaps->integer && numLightmaps > 1 ) {
+ 		// check for low texture sizes
+-		if ( glConfig.maxTextureSize >= LIGHTMAP_LEN*2 ) {
++		if ( glConfig.maxTextureSize >= LIGHTMAP_LEN * 2 ) {
+ 			tr.mergeLightmaps = qtrue;
+ 			R_LoadMergedLightmaps( l, image ); // reuse stack space
+ 			return;
+@@ -433,6 +449,7 @@ static void R_LoadLightmaps( const lump_t *l ) {
+ 	//R_IssuePendingRenderCommands();
+ 
+ 	tr.lightmaps = ri.Hunk_Alloc( tr.numLightmaps * sizeof(image_t *), h_low );
++
+ 	for ( i = 0 ; i < tr.numLightmaps ; i++ ) {
+ 		maxIntensity = R_ProcessLightmap( image, buf + i * LIGHTMAP_SIZE * LIGHTMAP_SIZE * 3, maxIntensity );
+ 		tr.lightmaps[i] = R_CreateImage( va( "*lightmap%d", i ), NULL, image, LIGHTMAP_SIZE, LIGHTMAP_SIZE,
+@@ -569,6 +586,9 @@ static void GenerateNormals( srfSurfaceFace_t *face )
+ 	for ( i = 0; i < face->numPoints; i++ ) {
+ 		n1 = face->normals + i*4;
+ 		VectorNormalize2( n1, n1 );
++		for ( i0 = 0; i0 < 3; i0++ ) {
++			n1[i0] = R_ClampDenorm( n1[i0] );
++		}
+ 	}
+ }
+ #endif // USE_PMLIGHT
+@@ -651,7 +671,7 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 
+ #ifdef USE_PMLIGHT
+ 	if ( surf->shader->numUnfoggedPasses && surf->shader->lightingStage >= 0 ) {
+-		if ( fabs( cv->plane.normal[0] ) < 0.01 && fabs( cv->plane.normal[1] ) < 0.01 && fabs( cv->plane.normal[2] ) < 0.01 ) {
++		if ( fabsf( cv->plane.normal[0] ) < 0.01f && fabsf( cv->plane.normal[1] ) < 0.01f && fabsf( cv->plane.normal[2] ) < 0.01f ) {
+ 			// Zero-normals case:
+ 			// might happen if surface contains multiple non-coplanar faces for terrain simulation
+ 			// like in 'Pyramid of the Magician', 'tvy-bench' or 'terrast' maps
+@@ -666,6 +686,10 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	}
+ #endif
+ 
++	for ( i = 0; i < 3; i++ ) {
++		cv->plane.normal[i] = R_ClampDenorm( cv->plane.normal[i] );
++	}
++
+ 	cv->plane.dist = DotProduct( cv->points[0], cv->plane.normal );
+ 	SetPlaneSignbits( &cv->plane );
+ 	cv->plane.type = PlaneTypeForNormal( cv->plane.normal );
+@@ -721,7 +745,7 @@ static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	for ( i = 0 ; i < numPoints ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			points[i].xyz[j] = LittleFloat( verts[i].xyz[j] );
+-			points[i].normal[j] = LittleFloat( verts[i].normal[j] );
++			points[i].normal[j] = R_ClampDenorm( LittleFloat( verts[i].normal[j] ) );
+ 		}
+ 		for ( j = 0 ; j < 2 ; j++ ) {
+ 			points[i].st[j] = LittleFloat( verts[i].st[j] );
+@@ -800,7 +824,7 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ 	for ( i = 0 ; i < numVerts ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			tri->verts[i].xyz[j] = LittleFloat( verts[i].xyz[j] );
+-			tri->verts[i].normal[j] = LittleFloat( verts[i].normal[j] );
++			tri->verts[i].normal[j] = R_ClampDenorm( LittleFloat( verts[i].normal[j] ) );
+ 		}
+ 		AddPointToBounds( tri->verts[i].xyz, tri->bounds[0], tri->bounds[1] );
+ 		for ( j = 0 ; j < 2 ; j++ ) {
+@@ -850,7 +874,7 @@ static void ParseFlare( const dsurface_t *ds, const drawVert_t *verts, msurface_
+ 	for ( i = 0 ; i < 3 ; i++ ) {
+ 		flare->origin[i] = LittleFloat( ds->lightmapOrigin[i] );
+ 		flare->color[i] = LittleFloat( ds->lightmapVecs[0][i] );
+-		flare->normal[i] = LittleFloat( ds->lightmapVecs[2][i] );
++		flare->normal[i] = R_ClampDenorm( LittleFloat( ds->lightmapVecs[2][i] ) );
+ 	}
+ }
+ 
+@@ -1530,7 +1554,7 @@ R_MovePatchSurfacesToHunk
+ ===============
+ */
+ static void R_MovePatchSurfacesToHunk( void ) {
+-	int i, size;
++	int i, j, k, n, size;
+ 	srfGridMesh_t *grid, *hunkgrid;
+ 
+ 	for ( i = 0; i < s_worldData.numsurfaces; i++ ) {
+@@ -1540,7 +1564,15 @@ static void R_MovePatchSurfacesToHunk( void ) {
+ 		if ( grid->surfaceType != SF_GRID )
+ 			continue;
+ 		//
+-		size = (grid->width * grid->height - 1) * sizeof( drawVert_t ) + sizeof( *grid );
++		n = grid->width * grid->height - 1;
++		size = n * sizeof( drawVert_t ) + sizeof( *grid );
++
++		for (j = 0; j < n; j++) {
++			for (k = 0; k < 3; k++) {
++				grid->verts[j].normal[k] = R_ClampDenorm( grid->verts[j].normal[k] );
++			}
++		}
++
+ 		hunkgrid = ri.Hunk_Alloc( size, h_low );
+ 		Com_Memcpy(hunkgrid, grid, size);
+ 
+diff --git a/code/renderer/tr_curve.c b/code/renderer/tr_curve.c
+index 4bf8834ac..ae7bbd87f 100644
+--- a/code/renderer/tr_curve.c
++++ b/code/renderer/tr_curve.c
+@@ -121,9 +121,7 @@ static void MakeMeshNormals( int width, int height, drawVert_t ctrl[MAX_GRID_SIZ
+ 	qboolean	good[8];
+ 	qboolean	wrapWidth, wrapHeight;
+ 	float		len;
+-static	int	neighbors[8][2] = {
+-	{0,1}, {1,1}, {1,0}, {1,-1}, {0,-1}, {-1,-1}, {-1,0}, {-1,1}
+-	};
++	static const int neighbors[8][2] = { {0,1}, {1,1}, {1,0}, {1,-1}, {0,-1}, {-1,-1}, {-1,0}, {-1,1} };
+ 
+ 	wrapWidth = qfalse;
+ 	for ( i = 0 ; i < height ; i++ ) {
+@@ -203,6 +201,9 @@ static	int	neighbors[8][2] = {
+ 			}
+ 
+ 			VectorNormalize2( sum, dv->normal );
++			for ( k = 0; k < 3; k++ ) {
++				dv->normal[k] = R_ClampDenorm( dv->normal[k] );
++			}
+ 		}
+ 	}
+ }
+diff --git a/code/renderer/tr_local.h b/code/renderer/tr_local.h
+index 3053a606c..777ad8a23 100644
+--- a/code/renderer/tr_local.h
++++ b/code/renderer/tr_local.h
+@@ -1453,6 +1453,8 @@ int R_ComputeLOD( trRefEntity_t *ent );
+ 
+ const void *RB_TakeVideoFrameCmd( const void *data );
+ 
++float R_ClampDenorm( float v );
++
+ //
+ // tr_shader.c
+ //
+diff --git a/code/renderervk/tr_bsp.c b/code/renderervk/tr_bsp.c
+index 1eaad4f55..38ca91917 100644
+--- a/code/renderervk/tr_bsp.c
++++ b/code/renderervk/tr_bsp.c
+@@ -94,6 +94,22 @@ static void HSVtoRGB( float h, float s, float v, float rgb[3] )
+ }
+ 
+ 
++/*
++===============
++R_ClampDenorm
++
++Clamp fp values that may result in denormalization after further multiplication
++===============
++*/
++float R_ClampDenorm( float v ) {
++	if ( fabsf( v ) > 0.0f && fabsf( v ) < 1e-9f ) {
++		return 0.0f;
++	} else {
++		return v;
++	}
++}
++
++
+ /*
+ ===============
+ R_ColorShiftLightingBytes
+@@ -574,6 +590,9 @@ static void GenerateNormals( srfSurfaceFace_t *face )
+ 	for ( i = 0; i < face->numPoints; i++ ) {
+ 		n1 = face->normals + i*4;
+ 		VectorNormalize2( n1, n1 );
++		for ( i0 = 0; i0 < 3; i0++ ) {
++			n1[i0] = R_ClampDenorm( n1[i0] );
++		}
+ 	}
+ }
+ #endif // USE_PMLIGHT
+@@ -584,8 +603,8 @@ static void GenerateNormals( srfSurfaceFace_t *face )
+ qsort_idx
+ =============
+ */
+-static void qsort_idx( int *a, const int n ) {
+-	int temp[3], m;
++void qsort_idx( int32_t *a, const int n ) {
++	int32_t temp[3], m;
+ 	int i, j, x;
+ 
+ 	i = 0;
+@@ -704,7 +723,7 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 
+ #ifdef USE_PMLIGHT
+ 	if ( surf->shader->numUnfoggedPasses && surf->shader->lightingStage >= 0 ) {
+-		if ( fabs( cv->plane.normal[0] ) < 0.01 && fabs( cv->plane.normal[1] ) < 0.01 && fabs( cv->plane.normal[2] ) < 0.01 ) {
++		if ( fabsf( cv->plane.normal[0] ) < 0.01f && fabsf( cv->plane.normal[1] ) < 0.01f && fabsf( cv->plane.normal[2] ) < 0.01f ) {
+ 			// Zero-normals case:
+ 			// might happen if surface contains multiple non-coplanar faces for terrain simulation
+ 			// like in 'Pyramid of the Magician', 'tvy-bench' or 'terrast' maps
+@@ -719,6 +738,10 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	}
+ #endif
+ 
++	for ( i = 0; i < 3; i++ ) {
++		cv->plane.normal[i] = R_ClampDenorm( cv->plane.normal[i] );
++	}
++
+ 	cv->plane.dist = DotProduct( cv->points[0], cv->plane.normal );
+ 	SetPlaneSignbits( &cv->plane );
+ 	cv->plane.type = PlaneTypeForNormal( cv->plane.normal );
+@@ -774,7 +797,7 @@ static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	for ( i = 0 ; i < numPoints ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			points[i].xyz[j] = LittleFloat( verts[i].xyz[j] );
+-			points[i].normal[j] = LittleFloat( verts[i].normal[j] );
++			points[i].normal[j] = R_ClampDenorm( LittleFloat( verts[i].normal[j] ) );
+ 		}
+ 		for ( j = 0 ; j < 2 ; j++ ) {
+ 			points[i].st[j] = LittleFloat( verts[i].st[j] );
+@@ -853,7 +876,7 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ 	for ( i = 0 ; i < numVerts ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			tri->verts[i].xyz[j] = LittleFloat( verts[i].xyz[j] );
+-			tri->verts[i].normal[j] = LittleFloat( verts[i].normal[j] );
++			tri->verts[i].normal[j] = R_ClampDenorm( LittleFloat( verts[i].normal[j] ) );
+ 		}
+ 		AddPointToBounds( tri->verts[i].xyz, tri->bounds[0], tri->bounds[1] );
+ 		for ( j = 0 ; j < 2 ; j++ ) {
+@@ -903,7 +926,7 @@ static void ParseFlare( const dsurface_t *ds, const drawVert_t *verts, msurface_
+ 	for ( i = 0 ; i < 3 ; i++ ) {
+ 		flare->origin[i] = LittleFloat( ds->lightmapOrigin[i] );
+ 		flare->color[i] = LittleFloat( ds->lightmapVecs[0][i] );
+-		flare->normal[i] = LittleFloat( ds->lightmapVecs[2][i] );
++		flare->normal[i] = R_ClampDenorm( LittleFloat( ds->lightmapVecs[2][i] ) );
+ 	}
+ }
+ 
+@@ -1583,7 +1606,7 @@ R_MovePatchSurfacesToHunk
+ ===============
+ */
+ static void R_MovePatchSurfacesToHunk( void ) {
+-	int i, size;
++	int i, j, k, n, size;
+ 	srfGridMesh_t *grid, *hunkgrid;
+ 
+ 	for ( i = 0; i < s_worldData.numsurfaces; i++ ) {
+@@ -1593,7 +1616,15 @@ static void R_MovePatchSurfacesToHunk( void ) {
+ 		if ( grid->surfaceType != SF_GRID )
+ 			continue;
+ 		//
+-		size = (grid->width * grid->height - 1) * sizeof( drawVert_t ) + sizeof( *grid );
++		n = grid->width * grid->height - 1;
++		size = n * sizeof( drawVert_t ) + sizeof( *grid );
++
++		for (j = 0; j < n; j++) {
++			for (k = 0; k < 3; k++) {
++				grid->verts[j].normal[k] = R_ClampDenorm( grid->verts[j].normal[k] );
++			}
++		}
++
+ 		hunkgrid = ri.Hunk_Alloc( size, h_low );
+ 		Com_Memcpy(hunkgrid, grid, size);
+ 
+diff --git a/code/renderervk/tr_curve.c b/code/renderervk/tr_curve.c
+index 4bf8834ac..ae7bbd87f 100644
+--- a/code/renderervk/tr_curve.c
++++ b/code/renderervk/tr_curve.c
+@@ -121,9 +121,7 @@ static void MakeMeshNormals( int width, int height, drawVert_t ctrl[MAX_GRID_SIZ
+ 	qboolean	good[8];
+ 	qboolean	wrapWidth, wrapHeight;
+ 	float		len;
+-static	int	neighbors[8][2] = {
+-	{0,1}, {1,1}, {1,0}, {1,-1}, {0,-1}, {-1,-1}, {-1,0}, {-1,1}
+-	};
++	static const int neighbors[8][2] = { {0,1}, {1,1}, {1,0}, {1,-1}, {0,-1}, {-1,-1}, {-1,0}, {-1,1} };
+ 
+ 	wrapWidth = qfalse;
+ 	for ( i = 0 ; i < height ; i++ ) {
+@@ -203,6 +201,9 @@ static	int	neighbors[8][2] = {
+ 			}
+ 
+ 			VectorNormalize2( sum, dv->normal );
++			for ( k = 0; k < 3; k++ ) {
++				dv->normal[k] = R_ClampDenorm( dv->normal[k] );
++			}
+ 		}
+ 	}
+ }
+diff --git a/code/renderervk/tr_init.c b/code/renderervk/tr_init.c
+index 9bc080301..f817cd102 100644
+--- a/code/renderervk/tr_init.c
++++ b/code/renderervk/tr_init.c
+@@ -1952,10 +1952,11 @@ static void RE_Shutdown( refShutdownCode_t code ) {
+ 	if ( tr.registered ) {
+ 		//R_IssuePendingRenderCommands();
+ 		R_DeleteTextures();
++	}
++
+ #ifdef USE_VULKAN
+-		vk_release_resources();
++	vk_release_resources();
+ #endif
+-	}
+ 
+ 	R_DoneFreeType();
+ 
+diff --git a/code/renderervk/tr_local.h b/code/renderervk/tr_local.h
+index aba69b7b2..a82aa8625 100644
+--- a/code/renderervk/tr_local.h
++++ b/code/renderervk/tr_local.h
+@@ -1539,6 +1539,8 @@ int R_ComputeLOD( trRefEntity_t *ent );
+ 
+ const void *RB_TakeVideoFrameCmd( const void *data );
+ 
++float R_ClampDenorm( float v );
++
+ //
+ // tr_shader.c
+ //
+diff --git a/code/renderervk/vk.c b/code/renderervk/vk.c
+index 065daf5b7..2d5e275a0 100644
+--- a/code/renderervk/vk.c
++++ b/code/renderervk/vk.c
+@@ -328,9 +328,12 @@ static VkCommandBuffer begin_command_buffer( void )
+ 
+ static void end_command_buffer( VkCommandBuffer command_buffer, const char *location )
+ {
++#ifdef USE_UPLOAD_QUEUE
++	const VkPipelineStageFlags wait_dst_stage_mask = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
++	VkSemaphore waits;
++#endif
+ 	VkSubmitInfo submit_info;
+ 	VkCommandBuffer cmdbuf[1];
+-	VkResult res;
+ 
+ 	cmdbuf[0] = command_buffer;
+ 
+@@ -338,23 +341,29 @@ static void end_command_buffer( VkCommandBuffer command_buffer, const char *loca
+ 
+ 	submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+ 	submit_info.pNext = NULL;
+-	submit_info.waitSemaphoreCount = 0;
+-	submit_info.pWaitSemaphores = NULL;
+-	submit_info.pWaitDstStageMask = NULL;
++#ifdef USE_UPLOAD_QUEUE
++	if ( vk.rendering_finished != VK_NULL_HANDLE ) {
++		waits = vk.rendering_finished;
++		vk.rendering_finished = VK_NULL_HANDLE;
++		submit_info.waitSemaphoreCount = 1;
++		submit_info.pWaitSemaphores = &waits;
++		submit_info.pWaitDstStageMask = &wait_dst_stage_mask;
++	} else 
++#endif
++	{
++		submit_info.waitSemaphoreCount = 0;
++		submit_info.pWaitSemaphores = NULL;
++		submit_info.pWaitDstStageMask = NULL;
++	}
++
+ 	submit_info.commandBufferCount = 1;
+ 	submit_info.pCommandBuffers = cmdbuf;
+ 	submit_info.signalSemaphoreCount = 0;
+ 	submit_info.pSignalSemaphores = NULL;
+ 
+-	VK_CHECK( qvkQueueSubmit( vk.queue, 1, &submit_info, vk.aux_fence ) );
++	VK_CHECK( qvkQueueSubmit( vk.queue, 1, &submit_info, VK_NULL_HANDLE ) );
+ 
+-	// 5 seconds should be more than enough to finish the job in normal conditions:
+-	res = qvkWaitForFences( vk.device, 1, &vk.aux_fence, VK_TRUE, 5 * 1000000000ULL );
+-	if ( res != VK_SUCCESS ) {
+-		ri.Error( ERR_FATAL, "vkWaitForFences() failed with %s at %s", vk_result_string( res ), location );
+-	}
+-
+-	qvkResetFences( vk.device, 1, &vk.aux_fence );
++	vk_queue_wait_idle();
+ 
+ 	qvkFreeCommandBuffers( vk.device, vk.command_pool, 1, cmdbuf );
+ }
+@@ -1065,10 +1074,93 @@ static void vk_clean_staging_buffer( void )
+ 		vk_world.staging_buffer_memory = VK_NULL_HANDLE;
+ 	}
+ 
++	vk_world.staging_buffer_ptr = NULL;
+ 	vk_world.staging_buffer_size = 0;
++#ifdef USE_UPLOAD_QUEUE
++	vk_world.staging_buffer_offset = 0;
++#endif
+ }
+ 
+ 
++#ifdef USE_UPLOAD_QUEUE
++static void vk_wait_staging_buffer( void )
++{
++	if ( vk.aux_fence_wait )
++	{
++		VkResult res;
++		res = qvkWaitForFences( vk.device, 1, &vk.aux_fence, VK_TRUE, 5 * 1000000000ULL );
++		if ( res != VK_SUCCESS ) {
++			ri.Error( ERR_FATAL, "vkWaitForFences() failed with %s at %s", vk_result_string( res ), __func__ );
++		}
++		qvkResetFences( vk.device, 1, &vk.aux_fence );
++		vk.aux_fence_wait = qfalse;
++		VK_CHECK( qvkResetCommandBuffer( vk.staging_command_buffer, 0 ) );
++	}
++}
++
++
++static void vk_submit_staging_buffer( qboolean final )
++{
++	const VkPipelineStageFlags wait_dst_stage_mask = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
++	VkSemaphore waits;
++	VkSubmitInfo submit_info;
++	VkResult res;
++
++	if ( vk_world.staging_buffer_offset == 0 ) {
++		return;
++	}
++
++	//ri.Printf( PRINT_WARNING, S_COLOR_CYAN ">>> flush %i bytes (final=%i)<<<\n", (int)vk_world.staging_buffer_offset, final );
++
++	vk_world.staging_buffer_offset = 0;
++
++	VK_CHECK( qvkEndCommandBuffer( vk.staging_command_buffer ) );
++
++	submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
++	submit_info.pNext = NULL;
++
++	if ( vk.rendering_finished != VK_NULL_HANDLE ) {
++		// first call after previous queue submission?
++		waits = vk.rendering_finished;
++		vk.rendering_finished = VK_NULL_HANDLE;
++		submit_info.waitSemaphoreCount = 1;
++		submit_info.pWaitSemaphores = &waits;
++		submit_info.pWaitDstStageMask = &wait_dst_stage_mask;
++	} else {
++		submit_info.waitSemaphoreCount = 0;
++		submit_info.pWaitSemaphores = NULL;
++		submit_info.pWaitDstStageMask = NULL;
++	}
++
++	submit_info.commandBufferCount = 1;
++	submit_info.pCommandBuffers = &vk.staging_command_buffer;
++
++	if ( vk.image_uploaded != VK_NULL_HANDLE ) {
++		ri.Error( ERR_FATAL, "Vulkan: incorrect state during image upload" );
++	}
++	if ( final ) {
++		// final submission before recording
++		submit_info.signalSemaphoreCount = 1;
++		submit_info.pSignalSemaphores = &vk.image_uploaded2;
++		vk.image_uploaded = vk.image_uploaded2;
++		VK_CHECK( qvkQueueSubmit( vk.queue, 1, &submit_info, vk.aux_fence ) );
++		vk.aux_fence_wait = qtrue;
++	} else {
++		// if submission before another upload then do explicit wait
++		submit_info.signalSemaphoreCount = 0;
++		submit_info.pSignalSemaphores = NULL;
++		VK_CHECK( qvkQueueSubmit( vk.queue, 1, &submit_info, vk.aux_fence ) );
++		res = qvkWaitForFences( vk.device, 1, &vk.aux_fence, VK_TRUE, 5 * 1000000000ULL );
++		if ( res != VK_SUCCESS ) {
++			ri.Error( ERR_FATAL, "vkWaitForFences() failed with %s at %s", vk_result_string( res ), __func__ );
++		}
++		qvkResetFences( vk.device, 1, &vk.aux_fence );
++		VK_CHECK( qvkResetCommandBuffer( vk.staging_command_buffer, 0 ) );
++	}
++}
++#endif // USE_UPLOAD_QUEUE
++
++
+ static void ensure_staging_buffer_allocation( VkDeviceSize size )
+ {
+ 	VkBufferCreateInfo buffer_desc;
+@@ -1077,9 +1169,21 @@ static void ensure_staging_buffer_allocation( VkDeviceSize size )
+ 	uint32_t memory_type;
+ 	void *data;
+ 
+-	if ( vk_world.staging_buffer_size >= size )
++#ifdef USE_UPLOAD_QUEUE
++	if ( vk_world.staging_buffer_size - vk_world.staging_buffer_offset >= size ) {
+ 		return;
++	}
+ 
++	vk_submit_staging_buffer( qfalse );
++
++	if ( vk_world.staging_buffer_size /* - vk_world.staging_buffer_offset */ >= size ) {
++		return;
++	}
++#else
++	if ( vk_world.staging_buffer_size >= size ) {
++		return;
++	}
++#endif
+ 	vk_clean_staging_buffer();
+ 
+ 	vk_world.staging_buffer_size = MAX( size, STAGING_BUFFER_SIZE );
+@@ -1109,7 +1213,9 @@ static void ensure_staging_buffer_allocation( VkDeviceSize size )
+ 
+ 	VK_CHECK(qvkMapMemory(vk.device, vk_world.staging_buffer_memory, 0, VK_WHOLE_SIZE, 0, &data));
+ 	vk_world.staging_buffer_ptr = (byte*)data;
+-
++#ifdef USE_UPLOAD_QUEUE
++	vk_world.staging_buffer_offset = 0;
++#endif
+ 	SET_OBJECT_NAME( vk_world.staging_buffer, "staging buffer", VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT );
+ 	SET_OBJECT_NAME( vk_world.staging_buffer_memory, "staging buffer memory", VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT );
+ }
+@@ -3599,6 +3705,10 @@ static void vk_create_sync_primitives( void ) {
+ 	desc.pNext = NULL;
+ 	desc.flags = 0;
+ 
++#ifdef USE_UPLOAD_QUEUE
++	VK_CHECK( qvkCreateSemaphore( vk.device, &desc, NULL, &vk.image_uploaded2 ) );
++#endif
++
+ 	// all commands submitted
+ 	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ )
+ 	{
+@@ -3610,16 +3720,23 @@ static void vk_create_sync_primitives( void ) {
+ 		VK_CHECK( qvkCreateSemaphore( vk.device, &desc, NULL, &vk.tess[i].image_acquired ) );
+ 
+ 		VK_CHECK( qvkCreateSemaphore( vk.device, &desc, NULL, &vk.tess[i].rendering_finished ) );
+-
++#ifdef USE_UPLOAD_QUEUE
++		// second semaphore to synchronize additional tasks (e.g. image upload)
++		VK_CHECK( qvkCreateSemaphore( vk.device, &desc, NULL, &vk.tess[i].rendering_finished2 ) );
++#endif
+ 		fence_desc.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+ 		fence_desc.pNext = NULL;
+-		fence_desc.flags = VK_FENCE_CREATE_SIGNALED_BIT; // so it can be used to start rendering
++		//fence_desc.flags = VK_FENCE_CREATE_SIGNALED_BIT; // so it can be used to start rendering
++		fence_desc.flags = 0; // non-signalled state
+ 
+ 		VK_CHECK( qvkCreateFence( vk.device, &fence_desc, NULL, &vk.tess[i].rendering_finished_fence ) );
+-		vk.tess[i].waitForFence = qtrue;
++		vk.tess[i].waitForFence = qfalse;
+ 
+ 		SET_OBJECT_NAME( vk.tess[i].image_acquired, va( "image_acquired semaphore %i", i ), VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT );
+ 		SET_OBJECT_NAME( vk.tess[i].rendering_finished, va( "rendering_finished semaphore %i", i ), VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT );
++#ifdef USE_UPLOAD_QUEUE
++		SET_OBJECT_NAME( vk.tess[i].rendering_finished2, va( "rendering_finished2 semaphore %i", i ), VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT );
++#endif
+ 		SET_OBJECT_NAME( vk.tess[i].rendering_finished_fence, va( "rendering_finished fence %i", i ), VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT );
+ 	}
+ 
+@@ -3627,22 +3744,40 @@ static void vk_create_sync_primitives( void ) {
+ 	fence_desc.pNext = NULL;
+ 	fence_desc.flags = 0;
+ 
++#ifdef USE_UPLOAD_QUEUE
+ 	VK_CHECK( qvkCreateFence( vk.device, &fence_desc, NULL, &vk.aux_fence ) );
+ 	SET_OBJECT_NAME( vk.aux_fence, "aux fence", VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT );
++
++	vk.rendering_finished = VK_NULL_HANDLE;
++	vk.image_uploaded = VK_NULL_HANDLE;
++	vk.aux_fence_wait = qfalse;
++#endif
+ }
+ 
+ 
+ static void vk_destroy_sync_primitives( void  ) {
+ 	uint32_t i;
+ 
++#ifdef USE_UPLOAD_QUEUE
++	qvkDestroySemaphore( vk.device, vk.image_uploaded2, NULL );
++#endif
++
+ 	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
+ 		qvkDestroySemaphore( vk.device, vk.tess[i].image_acquired, NULL );
+ 		qvkDestroySemaphore( vk.device, vk.tess[i].rendering_finished, NULL );
++#ifdef USE_UPLOAD_QUEUE
++		qvkDestroySemaphore( vk.device, vk.tess[i].rendering_finished2, NULL );
++#endif
+ 		qvkDestroyFence( vk.device, vk.tess[i].rendering_finished_fence, NULL );
+ 		vk.tess[i].waitForFence = qfalse;
+ 	}
+ 
++#ifdef USE_UPLOAD_QUEUE
+ 	qvkDestroyFence( vk.device, vk.aux_fence, NULL );
++
++	vk.rendering_finished = VK_NULL_HANDLE;
++	vk.image_uploaded = VK_NULL_HANDLE;
++#endif
+ }
+ 
+ 
+@@ -3714,6 +3849,12 @@ static void vk_restart_swapchain( const char *funcname )
+ 		qvkResetCommandBuffer( vk.tess[i].command_buffer, 0 );
+ 	}
+ 
++#ifdef USE_UPLOAD_QUEUE
++	if ( vk.staging_command_buffer != VK_NULL_HANDLE ) {
++		qvkResetCommandBuffer( vk.staging_command_buffer, 0 );
++	}
++#endif
++
+ 	vk_destroy_pipelines( qfalse );
+ 	vk_destroy_framebuffers();
+ 	vk_destroy_render_passes();
+@@ -3954,6 +4095,20 @@ void vk_initialize( void )
+ 		SET_OBJECT_NAME( vk.command_pool, "command pool", VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT );
+ 	}
+ 
++#ifdef USE_UPLOAD_QUEUE
++	{
++		VkCommandBufferAllocateInfo alloc_info;
++
++		alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
++		alloc_info.pNext = NULL;
++		alloc_info.commandPool = vk.command_pool;
++		alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
++		alloc_info.commandBufferCount = 1;
++
++		VK_CHECK( qvkAllocateCommandBuffers( vk.device, &alloc_info, &vk.staging_command_buffer ) );
++	}
++#endif
++
+ 	//
+ 	// Command buffers and color attachments.
+ 	//
+@@ -4671,6 +4826,9 @@ void vk_upload_image_data( image_t *image, int x, int y, int width, int height,
+ 
+ 	byte *buf;
+ 	int bpp;
++#ifdef USE_UPLOAD_QUEUE
++	int i;
++#endif
+ 
+ 	int num_regions = 0;
+ 	int buffer_size = 0;
+@@ -4711,11 +4869,36 @@ void vk_upload_image_data( image_t *image, int x, int y, int width, int height,
+ 		if (height < 1) height = 1;
+ 	}
+ 
++#ifdef USE_UPLOAD_QUEUE
++	vk_wait_staging_buffer();
++
++	ensure_staging_buffer_allocation( buffer_size );
++
++	for ( i = 0; i < num_regions; i++ ) {
++		regions[i].bufferOffset += vk_world.staging_buffer_offset;
++	}
++
++	Com_Memcpy( vk_world.staging_buffer_ptr + vk_world.staging_buffer_offset, buf, buffer_size );
++
++	if ( vk_world.staging_buffer_offset == 0 ) {
++		VkCommandBufferBeginInfo begin_info;
++		begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
++		begin_info.pNext = NULL;
++		begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
++		begin_info.pInheritanceInfo = NULL;
++		VK_CHECK( qvkBeginCommandBuffer( vk.staging_command_buffer, &begin_info ) );
++	}
++	//ri.Printf( PRINT_WARNING, "batch @%6i + %i %s \n", (int)vk_world.staging_buffer_offset, (int)buffer_size, image->imgName );
++	vk_world.staging_buffer_offset += buffer_size;
++
++	command_buffer = vk.staging_command_buffer;
++#else
+ 	ensure_staging_buffer_allocation( buffer_size );
+ 
+ 	Com_Memcpy( vk_world.staging_buffer_ptr, buf, buffer_size );
+ 
+ 	command_buffer = begin_command_buffer();
++#endif
+ 
+ 	// record_buffer_memory_barrier( command_buffer, vk_world.staging_buffer, VK_WHOLE_SIZE, 0, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT );
+ 
+@@ -4731,7 +4914,9 @@ void vk_upload_image_data( image_t *image, int x, int y, int width, int height,
+ 
+ 	record_image_layout_transition( command_buffer, image->handle, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
+ 
++#ifndef USE_UPLOAD_QUEUE
+ 	end_command_buffer( command_buffer, __func__ );
++#endif
+ 
+ 	if ( buf != pixels ) {
+ 		ri.Hunk_FreeTempMemory( buf );
+@@ -7060,6 +7245,10 @@ void vk_begin_frame( void )
+ 	if ( vk.frame_count++ ) // might happen during stereo rendering
+ 		return;
+ 
++#ifdef USE_UPLOAD_QUEUE
++	vk_submit_staging_buffer( qtrue );
++#endif
++
+ 	vk.cmd = &vk.tess[ vk.cmd_index ];
+ 
+ 	if ( vk.cmd->waitForFence ) {
+@@ -7177,7 +7366,12 @@ static void vk_resize_geometry_buffer( void )
+ 
+ void vk_end_frame( void )
+ {
++#ifdef USE_UPLOAD_QUEUE
++	VkSemaphore waits[2], signals[2];
++	const VkPipelineStageFlags wait_dst_stage_mask[2] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
++#else
+ 	const VkPipelineStageFlags wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
++#endif
+ 	VkSubmitInfo submit_info;
+ 
+ 	if ( vk.frame_count == 0 )
+@@ -7241,11 +7435,46 @@ void vk_end_frame( void )
+ 	submit_info.commandBufferCount = 1;
+ 	submit_info.pCommandBuffers = &vk.cmd->command_buffer;
+ 	if ( !ri.CL_IsMinimized() ) {
++#ifdef USE_UPLOAD_QUEUE
++		if ( vk.image_uploaded != VK_NULL_HANDLE ) {
++			waits[0] = vk.cmd->image_acquired;
++			waits[1] = vk.image_uploaded;
++			submit_info.waitSemaphoreCount = 2;
++			submit_info.pWaitSemaphores = &waits[0];
++			submit_info.pWaitDstStageMask = &wait_dst_stage_mask[0];
++			signals[0] = vk.cmd->rendering_finished;
++			signals[1] = vk.cmd->rendering_finished2;
++			submit_info.signalSemaphoreCount = 2;
++			submit_info.pSignalSemaphores = &signals[0];
++
++			vk.rendering_finished = vk.cmd->rendering_finished2;
++			vk.image_uploaded = VK_NULL_HANDLE;
++		} else if ( vk.rendering_finished != VK_NULL_HANDLE ) {
++			waits[0] = vk.cmd->image_acquired;
++			waits[1] = vk.rendering_finished;
++			submit_info.waitSemaphoreCount = 2;
++			submit_info.pWaitSemaphores = &waits[0];
++			submit_info.pWaitDstStageMask = &wait_dst_stage_mask[0];
++			signals[0] = vk.cmd->rendering_finished;
++			signals[1] = vk.cmd->rendering_finished2;
++			submit_info.signalSemaphoreCount = 2;
++			submit_info.pSignalSemaphores = &signals[0];
++
++			vk.rendering_finished = vk.cmd->rendering_finished2;
++		} else {
++			submit_info.waitSemaphoreCount = 1;
++			submit_info.pWaitSemaphores = &vk.cmd->image_acquired;
++			submit_info.pWaitDstStageMask = &wait_dst_stage_mask[0];
++			submit_info.signalSemaphoreCount = 1;
++			submit_info.pSignalSemaphores = &vk.cmd->rendering_finished;
++		}
++#else
+ 		submit_info.waitSemaphoreCount = 1;
+ 		submit_info.pWaitSemaphores = &vk.cmd->image_acquired;
+ 		submit_info.pWaitDstStageMask = &wait_dst_stage_mask;
+ 		submit_info.signalSemaphoreCount = 1;
+ 		submit_info.pSignalSemaphores = &vk.cmd->rendering_finished;
++#endif
+ 	} else {
+ 		submit_info.waitSemaphoreCount = 0;
+ 		submit_info.pWaitSemaphores = NULL;
+diff --git a/code/renderervk/vk.h b/code/renderervk/vk.h
+index fbcfcc05c..a95885acb 100644
+--- a/code/renderervk/vk.h
++++ b/code/renderervk/vk.h
+@@ -22,6 +22,8 @@
+ 
+ #define USE_REVERSED_DEPTH
+ 
++#define USE_UPLOAD_QUEUE
++
+ #define VK_NUM_BLOOM_PASSES 4
+ 
+ #ifndef _DEBUG
+@@ -310,6 +312,9 @@ typedef struct vk_tess_s {
+ 	uint32_t	swapchain_image_index;
+ 	qboolean	swapchain_image_acquired;
+ 	VkSemaphore rendering_finished;
++#ifdef USE_UPLOAD_QUEUE
++	VkSemaphore rendering_finished2;
++#endif
+ 	VkFence rendering_finished_fence;
+ 	qboolean waitForFence;
+ 
+@@ -358,6 +363,9 @@ typedef struct {
+ 	//uint32_t swapchain_image_index;
+ 
+ 	VkCommandPool command_pool;
++#ifdef USE_UPLOAD_QUEUE
++	VkCommandBuffer staging_command_buffer;
++#endif
+ 
+ 	VkDeviceMemory image_memory[ MAX_ATTACHMENTS_IN_POOL ];
+ 	uint32_t image_memory_count;
+@@ -426,6 +434,12 @@ typedef struct {
+ 		VkFramebuffer capture;
+ 	} framebuffers;
+ 
++#ifdef USE_UPLOAD_QUEUE
++	VkSemaphore rendering_finished;	// reference to vk.cmd->rendering_finished2
++	VkSemaphore image_uploaded2;
++	VkSemaphore image_uploaded;		// reference to vk.image_uploaded2
++#endif
++
+ 	vk_tess_t tess[ NUM_COMMAND_BUFFERS ], *cmd;
+ 	int cmd_index;
+ 
+@@ -599,7 +613,10 @@ typedef struct {
+ 
+ 	uint32_t maxBoundDescriptorSets;
+ 
++#ifdef USE_UPLOAD_QUEUE
+ 	VkFence aux_fence;
++	qboolean aux_fence_wait;
++#endif
+ 
+ } Vk_Instance;
+ 
+@@ -629,6 +646,9 @@ typedef struct {
+ 	VkDeviceMemory staging_buffer_memory;
+ 	VkDeviceSize staging_buffer_size;
+ 	byte *staging_buffer_ptr; // pointer to mapped staging buffer
++#ifdef USE_UPLOAD_QUEUE
++	VkDeviceSize staging_buffer_offset;
++#endif
+ 
+ 	//
+ 	// State.
