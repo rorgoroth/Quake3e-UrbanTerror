@@ -469,7 +469,7 @@ ifdef MINGW
     else
       CLIENT_LDFLAGS += -L$(MOUNT_DIR)/libcurl/windows/mingw/lib64
     endif
-    CLIENT_LDFLAGS += -lcurl -lwldap32 -lcrypt32 -lncrypt -lz -lzstd -lbrotlienc -lbrotlidec -lbrotlicommon -lpsl
+    CLIENT_LDFLAGS += -lcurl -lwldap32 -lcrypt32 -lncrypt -lz -lzstd -lbrotlienc -lbrotlidec -lbrotlicommon -lpsl -liphlpapi -lsspicli
   endif
 
   ifeq ($(USE_OGG_VORBIS),1)
