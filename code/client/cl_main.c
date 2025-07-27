@@ -923,12 +923,7 @@ static qboolean CL_DemoNameCallback_f( const char *filename, int length )
 	int version;
 
 #ifdef USE_URT_DEMO
-        int isVersionUrT = Q_stricmpn( filename + length - 8, ".urtdemo", 8 );
-
-        if ( length < 9 && isVersionUrT ) {
-            return qfalse;
-    }
-        else if ( isVersionUrT != 0 ) {
+	return length > 8 && Q_stricmpn( filename + length - 8, ".urtdemo", 8 ) == 0;
 #endif
 
 	if ( length <= ext_len + num_len || Q_stricmpn( filename + length - (ext_len + num_len), "." DEMOEXT, ext_len ) != 0 )
@@ -940,9 +935,6 @@ static qboolean CL_DemoNameCallback_f( const char *filename, int length )
 
 	if ( version < 66 || version > NEW_PROTOCOL_VERSION )
 		return qfalse;
-#ifdef USE_URT_DEMO
-        }
-#endif
 
 	return qtrue;
 }
