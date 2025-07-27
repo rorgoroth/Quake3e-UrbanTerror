@@ -198,6 +198,7 @@ or configs will never get loaded from disk!
 
 // every time a new demo pk3 file is built, this checksum must be updated.
 // the easiest way to get it is to just run the game and see what it spits out
+/*
 #define	DEMO_PAK0_CHECKSUM	2985612116u
 static const unsigned pak_checksums[] = {
 	1566731103u,
@@ -210,6 +211,7 @@ static const unsigned pak_checksums[] = {
 	908855077u,
 	977125798u
 };
+*/
 
 // if this is defined, the executable positively won't work with any paks other
 // than the demo pak, even if productid is present.  This is only used for our
@@ -378,7 +380,7 @@ void Com_AppendCDKey( const char *filename );
 void Com_ReadCDKey( const char *filename );
 
 static int FS_GetModList( char *listbuf, int bufsize );
-static void FS_CheckIdPaks( void );
+//static void FS_CheckIdPaks( void );
 void FS_Reload( void );
 
 
@@ -4850,6 +4852,7 @@ static void FS_Startup( void ) {
 }
 
 
+/*
 static void FS_PrintSearchPaths( void )
 {
 	const searchpath_t *path = fs_searchpaths;
@@ -4864,7 +4867,7 @@ static void FS_PrintSearchPaths( void )
 		path = path->next;
 	}
 }
-
+*/
 
 /*
 ===================
@@ -4875,6 +4878,7 @@ Note: If you're building a game that doesn't depend on the
 Q3 media pak0.pk3, you'll want to remove this function
 ===================
 */
+/*
 static void FS_CheckIdPaks( void )
 {
 	const searchpath_t *path;
@@ -4969,7 +4973,7 @@ static void FS_CheckIdPaks( void )
 			Com_Error(ERR_FATAL, "\n*** you need to install Quake III Arena in order to play ***");
 	}
 }
-
+*/
 
 /*
 =====================

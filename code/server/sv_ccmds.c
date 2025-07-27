@@ -100,7 +100,7 @@ client_t *SV_GetPlayerByHandle( void ) {
 SV_GetPlayerByHandleParam
 ==================
 */
-static client_t *SV_GetPlayerByHandleParam(char *s)
+static client_t *SV_GetPlayerByHandleParam(const char *s)
 {
 
     client_t *cl;
