@@ -182,7 +182,7 @@ static	int	neighbors[8][2] = {
 						break;					// edge of patch
 					}
 					VectorSubtract( ctrl[y][x].xyz, base, temp );
-					if ( VectorNormalize2( temp, temp ) == 0 ) {
+					if ( VectorNormalize( temp ) < 0.001f ) {
 						continue;				// degenerate edge, get more dist
 					} else {
 						good[k] = qtrue;
@@ -198,7 +198,7 @@ static	int	neighbors[8][2] = {
 					continue;	// didn't get two points
 				}
 				CrossProduct( around[(k+1)&7], around[k], normal );
-				if ( VectorNormalize2( normal, normal ) == 0 ) {
+				if ( VectorNormalize( normal ) < 0.001f ) {
 					continue;
 				}
 				VectorAdd( normal, sum, sum );
@@ -564,7 +564,7 @@ void R_SubdividePatchToGrid( srfBspSurface_t *grid, int width, int height,
 	}
 
 
-	// put all the aproximating points on the curve
+	// put all the approximating points on the curve
 	PutPointsOnCurve( ctrl, width, height );
 
 	// cull out any rows or columns that are colinear
@@ -658,7 +658,7 @@ void R_GridInsertColumn( srfBspSurface_t *grid, int column, int row, vec3_t poin
 	for (j = 0; j < grid->height; j++) {
 		errorTable[1][j] = grid->heightLodError[j];
 	}
-	// put all the aproximating points on the curve
+	// put all the approximating points on the curve
 	//PutPointsOnCurve( ctrl, width, height );
 
 	// calculate indexes
@@ -718,7 +718,7 @@ void R_GridInsertRow( srfBspSurface_t *grid, int row, int column, vec3_t point, 
 	for (j = 0; j < grid->width; j++) {
 		errorTable[0][j] = grid->widthLodError[j];
 	}
-	// put all the aproximating points on the curve
+	// put all the approximating points on the curve
 	//PutPointsOnCurve( ctrl, width, height );
 
 	// calculate indexes

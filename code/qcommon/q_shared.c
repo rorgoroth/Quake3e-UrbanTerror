@@ -464,13 +464,13 @@ int COM_GetCurrentParseLine( void )
 }
 
 
-char *COM_Parse( const char **data_p )
+const char *COM_Parse( const char **data_p )
 {
 	return COM_ParseExt( data_p, qtrue );
 }
 
 
-void COM_ParseError( char *format, ... )
+void COM_ParseError( const char *format, ... )
 {
 	va_list argptr;
 	static char string[4096];
@@ -483,7 +483,7 @@ void COM_ParseError( char *format, ... )
 }
 
 
-void COM_ParseWarning( char *format, ... )
+void COM_ParseWarning( const char *format, ... )
 {
 	va_list argptr;
 	static char string[4096];
@@ -527,7 +527,8 @@ static const char *SkipWhitespace( const char *data, qboolean *hasNewLines ) {
 
 
 int COM_Compress( char *data_p ) {
-	char *in, *out;
+	const char *in;
+	char *out;
 	int c;
 	qboolean newline = qfalse, whitespace = qfalse;
 
@@ -593,7 +594,7 @@ int COM_Compress( char *data_p ) {
 }
 
 
-char *COM_ParseExt( const char **data_p, qboolean allowLineBreaks )
+const char *COM_ParseExt( const char **data_p, qboolean allowLineBreaks )
 {
 	int c = 0, len;
 	qboolean hasNewLines = qfalse;
@@ -820,7 +821,7 @@ __reswitch:
 			str++;
 		}
 		if ( c != '\0' ) {
-			str++; // skip enging '"'
+			str++; // skip ending '"'
 		} else {
 			// FIXME: unterminated quoted string?
 		}
@@ -936,7 +937,7 @@ __reswitch:
 COM_MatchToken
 ==================
 */
-void COM_MatchToken( const char **buf_p, const char *match ) {
+static void COM_MatchToken( const char **buf_p, const char *match ) {
 	const char *token;
 
 	token = COM_Parse( buf_p );
@@ -956,7 +957,7 @@ Internal brace depths are properly skipped.
 =================
 */
 qboolean SkipBracedSection( const char **program, int depth ) {
-	char			*token;
+	const char			*token;
 
 	do {
 		token = COM_ParseExt( program, qtrue );
@@ -1001,7 +1002,7 @@ void SkipRestOfLine( const char **data ) {
 
 
 void Parse1DMatrix( const char **buf_p, int x, float *m ) {
-	char	*token;
+	const char	*token;
 	int		i;
 
 	COM_MatchToken( buf_p, "(" );
@@ -1305,7 +1306,65 @@ void Q_strncpyz( char *dest, const char *src, int destsize )
 }
 
 
-int Q_stricmpn (const char *s1, const char *s2, int n) {
+/*
+=============
+Q_strncpy
+
+allows src and dest to be overlapped for QVM compatibility purposes
+=============
+*/
+char *Q_strncpy( char *dest, char *src, int destsize )
+{
+	char *s = src, *start = dest;
+	int src_len;
+
+	while ( *s != '\0' )
+		++s;
+	src_len = (int)(s - src);
+	
+	if ( src_len > destsize ) {
+		src_len = destsize;
+	}
+	destsize -= src_len;
+
+	if ( dest > src && dest < src + src_len ) {
+		int i;
+#ifdef _DEBUG
+		Com_Printf( S_COLOR_YELLOW "Q_strncpy: overlapped (dest > src) buffers\n" );
+#endif
+		for ( i = src_len - 1; i >= 0; --i ) {
+			dest[i] = src[i]; // back overlapping
+		}
+		dest += src_len;
+	} else {
+#ifdef _DEBUG
+		if ( src >= dest && src < dest + src_len ) {
+			Com_Printf( S_COLOR_YELLOW "Q_strncpy: overlapped (src >= dst) buffers\n" );
+#ifdef _MSC_VER
+			// __debugbreak();
+#endif 
+		}
+#endif
+		while ( src_len > 0 ) {
+			*dest++ = *src++;
+			--src_len;
+		}
+	}
+
+	while ( destsize > 0 ) {
+		*dest++ = '\0';
+		--destsize;
+	}
+
+	return start;
+}
+
+/*
+=============
+Q_stricmpn
+=============
+*/
+int Q_stricmpn( const char *s1, const char *s2, int n ) {
 	int		c1, c2;
 
 	// bk001129 - moved in 1.17 fix not in id codebase
@@ -1728,7 +1787,7 @@ const char *QDECL va( const char *format, ... )
 ============
 Com_TruncateLongString
 
-Assumes buffer is atleast TRUNCATE_LENGTH big
+Assumes buffer is at least TRUNCATE_LENGTH big
 ============
 */
 void Com_TruncateLongString( char *buffer, const char *s )
@@ -1778,7 +1837,7 @@ Searches the string for the given
 key and returns the associated value, or an empty string.
 ===============
 */
-char *Info_ValueForKey( const char *s, const char *key )
+const char *Info_ValueForKey( const char *s, const char *key )
 {
 	static	char value[2][BIG_INFO_VALUE];	// use two buffers so compares
 											// work without stomping on each other
@@ -1955,45 +2014,56 @@ const char *Info_NextPair( const char *s, char *key, char *value ) {
 /*
 ===================
 Info_RemoveKey
+
+return removed character count
 ===================
 */
 int Info_RemoveKey( char *s, const char *key )
 {
-	char	*start;
-	char 	*pkey;
-	int		key_len, len;
+	char *start;
+	const char *pkey;
+	int	key_len, len, ret;
 
-	key_len = (int) strlen( key );
+	key_len = (int)strlen( key );
+	ret = 0;
 
-	while (1)
-	{
+	while ( 1 ) {
 		start = s;
-		if ( *s == '\\' )
-			s++;
+		if ( *s == '\\' ) {
+			++s;
+		}
 		pkey = s;
-		while ( *s != '\\' )
-		{
-			if ( *s == '\0' )
-				return 0;
+		while ( *s != '\\' ) {
+			if ( *s == '\0' ) {
+				if ( s != start ) {
+					// remove any trailing empty keys
+					*start = '\0';
+					ret += (int)(s - start);
+				}
+				return ret;
+			}
 			++s;
 		}
 		len = (int)(s - pkey);
 		++s; // skip '\\'
 
-		while ( *s != '\\' && *s != '\0' )
+		while ( *s != '\\' && *s != '\0' ) {
 			++s;
-
-		if ( len == key_len && Q_strkey( pkey, key, key_len ) )
-		{
-			memmove( start, s, strlen( s ) + 1 ); // remove this part
-			return (int)(s - start);
 		}
 
-		if ( *s == '\0' )
+		if ( len == key_len && Q_strkey( pkey, key, key_len ) ) {
+			memmove( start, s, strlen( s ) + 1 ); // remove this part
+			ret += (int)(s - start);
+			s = start;
+		}
+
+		if ( *s == '\0' ) {
 			break;
+		}
+
 	}
 
-	return 0;
+	return ret;
 }
 
 
@@ -2079,13 +2149,13 @@ qboolean Info_SetValueForKey_s( char *s, int slen, const char *key, const char *
 	}
 
 	len1 -= Info_RemoveKey( s, key );
-	if ( !value || !*value )
+	if ( value == NULL || *value == '\0' ) {
 		return qtrue;
+	}
 
 	len2 = Com_sprintf( newi, sizeof( newi ), "\\%s\\%s", key, value );
 
-	if ( len1 + len2 >= slen )
-	{
+	if ( len1 + len2 >= slen ) {
 		Com_Printf( S_COLOR_YELLOW "Info string length exceeded for key '%s'\n", key );
 		return qfalse;
 	}
@@ -2102,7 +2172,7 @@ qboolean Info_SetValueForKey_s( char *s, int slen, const char *key, const char *
 Com_CharIsOneOfCharset
 ==================
 */
-static qboolean Com_CharIsOneOfCharset( char c, char *set )
+static qboolean Com_CharIsOneOfCharset( char c, const char *set )
 {
 	int i, n = (int)(strlen(set));
 
@@ -2121,9 +2191,9 @@ static qboolean Com_CharIsOneOfCharset( char c, char *set )
 Com_SkipCharset
 ==================
 */
-char *Com_SkipCharset( char *s, char *sep )
+const char *Com_SkipCharset( const char *s, const char *sep )
 {
-	char	*p = s;
+	const char	*p = s;
 
 	while( p )
 	{
@@ -2142,10 +2212,10 @@ char *Com_SkipCharset( char *s, char *sep )
 Com_SkipTokens
 ==================
 */
-char *Com_SkipTokens( char *s, int numTokens, char *sep )
+const char *Com_SkipTokens( const char *s, int numTokens, const char *sep )
 {
 	int		sepCount = 0;
-	char	*p = s;
+	const char	*p = s;
 
 	while( sepCount < numTokens )
 	{

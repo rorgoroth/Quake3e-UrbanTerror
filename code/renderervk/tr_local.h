@@ -30,12 +30,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define USE_FOG_ONLY
 #endif
 #define USE_LEGACY_DLIGHTS	// vq3 dynamic lights
-#define USE_PMLIGHT		// promode dynamic lights via \r_dlightMode 1|2
+#define USE_PMLIGHT			// promode dynamic lights via \r_dlightMode 1|2
 #define MAX_REAL_DLIGHTS	(MAX_DLIGHTS*2)
 #define MAX_LITSURFS		(MAX_DRAWSURFS)
 #define	MAX_FLARES			256
 
 #define MAX_TEXTURE_SIZE	2048 // must be less or equal to 32768
+
+#define USE_BUFFER_CLEAR	/* clear attachments on render pass begin */
 
 //#define USE_TESS_NEEDS_NORMAL
 //#define USE_TESS_NEEDS_ST2
@@ -276,7 +278,10 @@ typedef enum {
 	TMOD_SCALE,
 	TMOD_STRETCH,
 	TMOD_ROTATE,
-	TMOD_ENTITY_TRANSLATE
+	TMOD_ENTITY_TRANSLATE,
+	TMOD_OFFSET,
+	TMOD_SCALE_OFFSET,
+	TMOD_OFFSET_SCALE,
 } texMod_t;
 
 #define	MAX_SHADER_DEFORMS	3
@@ -296,30 +301,42 @@ typedef struct {
 typedef struct {
 	texMod_t		type;
 
-	// used for TMOD_TURBULENT and TMOD_STRETCH
-	waveForm_t		wave;
+	union {
 
-	// used for TMOD_TRANSFORM
-	float			matrix[2][2];		// s' = s * m[0][0] + t * m[1][0] + trans[0]
-	float			translate[2];		// t' = s * m[0][1] + t * m[0][1] + trans[1]
+		// used for TMOD_TURBULENT and TMOD_STRETCH
+		waveForm_t		wave;
 
-	// used for TMOD_SCALE
-	float			scale[2];			// s *= scale[0]
-	                                    // t *= scale[1]
+		// used for TMOD_TRANSFORM
+		struct {
+			float		matrix[2][2];	// s' = s * m[0][0] + t * m[1][0] + trans[0]
+			float		translate[2];	// t' = s * m[0][1] + t * m[0][1] + trans[1]
+		};
 
-	// used for TMOD_SCROLL
-	float			scroll[2];			// s' = s + scroll[0] * time
+		// used for TMOD_SCALE, TMOD_OFFSET, TMOD_SCALE_OFFSET
+		struct {
+			float		scale[2];		// s' = s * scale[0] + offset[0]
+			float		offset[2];		// t' = t * scale[1] + offset[1]
+		};
+
+		// used for TMOD_SCROLL
+		float			scroll[2];		// s' = s + scroll[0] * time
 										// t' = t + scroll[1] * time
+		// used for TMOD_ROTATE
+		// + = clockwise
+		// - = counterclockwise
+		float			rotateSpeed;
 
-	// + = clockwise
-	// - = counterclockwise
-	float			rotateSpeed;
+	};
 
 } texModInfo_t;
 
 
 #define MAX_IMAGE_ANIMATIONS		24
 #define MAX_IMAGE_ANIMATIONS_VQ3	8
+
+#define LIGHTMAP_INDEX_NONE			0
+#define LIGHTMAP_INDEX_SHADER		1
+#define LIGHTMAP_INDEX_OFFSET		2
 
 typedef struct {
 	image_t			*image[MAX_IMAGE_ANIMATIONS];
@@ -343,9 +360,10 @@ typedef struct {
 	acff_t			adjustColorsForFog;
 
 	int				videoMapHandle;
-	qboolean		isLightmap;
+	int				lightmap;				// LIGHTMAP_INDEX_NONE, LIGHTMAP_INDEX_SHADER, LIGHTMAP_INDEX_OFFSET
 	qboolean		isVideoMap;
-	qboolean		isScreenMap;
+	unsigned int 	isScreenMap : 1;
+	unsigned int 	dlight : 1;
 } textureBundle_t;
 
 #ifdef USE_VULKAN
@@ -389,7 +407,7 @@ struct shaderCommands_s;
 typedef enum {
 	FP_NONE,		// surface is translucent and will just be adjusted properly
 	FP_EQUAL,		// surface is opaque but possibly alpha tested
-	FP_LE			// surface is trnaslucent, but still needs a fog pass (fog surface)
+	FP_LE			// surface is translucent, but still needs a fog pass (fog surface)
 } fogPass_t;
 
 typedef struct {
@@ -430,6 +448,7 @@ typedef struct shader_s {
 	fogParms_t	fogParms;
 
 	float		portalRange;			// distance to fog out at
+	float		portalRangeR;
 
 	qboolean	multitextureEnv;		// if shader has multitexture stage(s)
 
@@ -476,8 +495,6 @@ typedef struct shader_s {
 #endif
 
 	int			hasScreenMap;
-
-	float		lightmapOffset[2];	// within merged lightmap
 
 	void	(*optimalStageIteratorFunc)( void );
 
@@ -565,7 +582,7 @@ typedef struct image_s {
 //=================================================================================
 
 // max surfaces per-skin
-// This is an arbitry limit. Vanilla Q3 only supported 32 surfaces in skins but failed to
+// This is an arbitrary limit. Vanilla Q3 only supported 32 surfaces in skins but failed to
 // enforce the maximum limit when reading skin files. It was possile to use more than 32
 // surfaces which accessed out of bounds memory past end of skin->surfaces hunk block.
 #define MAX_SKIN_SURFACES	256
@@ -1098,7 +1115,7 @@ enum {
 	SCREENSHOT_AVI = 1<<4 // take video frame
 };
 
-// all state modified by the back end is seperated
+// all state modified by the back end is separated
 // from the front end state
 typedef struct {
 	trRefdef_t	refdef;
@@ -1182,7 +1199,11 @@ typedef struct {
 
 	int						numLightmaps;
 	image_t					**lightmaps;
-	float					lightmapScale[2];
+
+	qboolean				mergeLightmaps;
+	float					lightmapOffset[2];	// current shader lightmap offset
+	float					lightmapScale[2];	// for lightmap atlases
+	int						lightmapMod;		// for lightmap atlases
 
 	trRefEntity_t			*currentEntity;
 	trRefEntity_t			worldEntity;		// point currentEntity at this when rendering world
@@ -1244,6 +1265,7 @@ typedef struct {
 	drawSurfsCommand_t		*drawSurfCmd;
 	int						numDrawSurfCmds;
 	int						lastRenderCommand;
+	int						numFogs; // read before parsing shaders
 #endif
 
 	qboolean				vertexLightingAllowed;
@@ -1284,6 +1306,8 @@ extern cvar_t	*r_stereoSeparation;			// separation of cameras for stereo renderi
 extern cvar_t	*r_lodbias;				// push/pull LOD transitions
 extern cvar_t	*r_lodscale;
 
+extern cvar_t	*r_teleporterFlash;		// teleport hyperspace visual
+
 extern cvar_t	*r_fastsky;				// controls whether sky should be cleared or drawn
 extern cvar_t	*r_neatsky;				// nomip and nopicmip for skyboxes, cnq3 like look
 extern cvar_t	*r_drawSun;				// controls drawing of sun quad
@@ -1307,9 +1331,11 @@ extern cvar_t	*r_hdr;
 extern cvar_t	*r_bloom;
 extern cvar_t	*r_bloom_threshold;
 extern cvar_t	*r_bloom_intensity;
+extern cvar_t	*r_bloom_threshold_mode;
+extern cvar_t	*r_bloom_modulate;
 extern cvar_t	*r_ext_multisample;
 extern cvar_t	*r_ext_supersample;
-extern cvar_t	*r_ext_alpha_to_coverage;
+//extern cvar_t	*r_ext_alpha_to_coverage;
 extern cvar_t	*r_renderWidth;
 extern cvar_t	*r_renderHeight;
 extern cvar_t	*r_renderScale;
@@ -1410,7 +1436,7 @@ void R_AddLitSurf( surfaceType_t *surface, shader_t *shader, int fogIndex );
 #define	CULL_IN		0		// completely unclipped
 #define	CULL_CLIP	1		// clipped by one or more planes
 #define	CULL_OUT	2		// completely outside the clipping planes
-void R_LocalNormalToWorld( const vec3_t local, vec3_t world );
+
 void R_LocalPointToWorld( const vec3_t local, vec3_t world );
 int R_CullLocalBox( const vec3_t bounds[2] );
 int R_CullPointAndRadius( const vec3_t origin, float radius );
@@ -1497,7 +1523,7 @@ void		R_Init( void );
 
 void		R_SetColorMappings( void );
 void		R_GammaCorrect( byte *buffer, int bufSize );
-void		R_ColorShiftLightingBytes( const byte in[4], byte out[4] );
+void		R_ColorShiftLightingBytes( const byte in[4], byte out[4], qboolean hasAlpha );
 
 void	R_ImageList_f( void );
 void	R_SkinList_f( void );
@@ -1513,6 +1539,8 @@ skin_t	*R_GetSkinByHandle( qhandle_t hSkin );
 int R_ComputeLOD( trRefEntity_t *ent );
 
 const void *RB_TakeVideoFrameCmd( const void *data );
+
+float R_ClampDenorm( float v );
 
 //
 // tr_shader.c
@@ -1612,8 +1640,8 @@ void RB_CheckOverflow( int verts, int indexes );
 void RB_StageIteratorGeneric( void );
 void RB_StageIteratorSky( void );
 
-void RB_AddQuadStamp( const vec3_t origin, const vec3_t left, const vec3_t up, const byte *color );
-void RB_AddQuadStampExt( const vec3_t origin, const vec3_t left, const vec3_t up, const byte *color, float s1, float t1, float s2, float t2 );
+void RB_AddQuadStamp( const vec3_t origin, const vec3_t left, const vec3_t up, color4ub_t color );
+void RB_AddQuadStampExt( const vec3_t origin, const vec3_t left, const vec3_t up, color4ub_t color, float s1, float t1, float s2, float t2 );
 void RB_AddQuadStamp2( float x, float y, float w, float h, float s1, float t1, float s2, float t2, color4ub_t color );
 
 void RB_ShowImages( void );
@@ -1663,7 +1691,6 @@ void VK_LightingPass( void );
 qboolean R_LightCullBounds( const dlight_t* dl, const vec3_t mins, const vec3_t maxs );
 #endif // USE_PMLIGHT
 
-void R_BindAnimatedImage( const textureBundle_t *bundle );
 void R_DrawElements( int numIndexes, const glIndex_t *indexes );
 void R_ComputeColors( const int bundle, color4ub_t *dest, const shaderStage_t *pStage );
 void R_ComputeTexCoords( const int b, const textureBundle_t *bundle );
@@ -1688,11 +1715,9 @@ SKIES
 ============================================================
 */
 
-void R_BuildCloudData( shaderCommands_t *shader );
 void R_InitSkyTexCoords( float cloudLayerHeight );
-void R_DrawSkyBox( shaderCommands_t *shader );
+void R_DrawSkyBox( const shaderCommands_t *shader );
 void RB_DrawSun( float scale, shader_t *shader );
-void RB_ClipSkyPolygons( shaderCommands_t *shader );
 
 /*
 ============================================================
@@ -1772,7 +1797,7 @@ void R_MDRAddAnimSurfaces( trRefEntity_t *ent );
 void RB_MDRSurfaceAnim( mdrSurface_t *surface );
 qboolean R_LoadIQM (model_t *mod, void *buffer, int filesize, const char *name );
 void R_AddIQMSurfaces( trRefEntity_t *ent );
-void RB_IQMSurfaceAnim( surfaceType_t *surface );
+void RB_IQMSurfaceAnim( const surfaceType_t *surface );
 int R_IQMLerpTag( orientation_t *tag, iqmData_t *data,
                   int startFrame, int endFrame,
                   float frac, const char *tagName );
@@ -1941,8 +1966,6 @@ void RB_TakeScreenshot( int x, int y, int width, int height, const char *fileNam
 void RB_TakeScreenshotJPEG( int x, int y, int width, int height, const char *fileName );
 void RB_TakeScreenshotBMP( int x, int y, int width, int height, const char *fileName, int clipboard );
 
-void R_IssuePendingRenderCommands( void );
-
 void R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs );
 
 void RE_SetColor( const float *rgba );
@@ -1958,8 +1981,6 @@ void RE_ThrottleBackend( void );
 qboolean RE_CanMinimize( void );
 const glconfig_t *RE_GetConfig( void );
 void RE_VertexLighting( qboolean allowed );
-
-qboolean R_HaveExtension( const char *ext );
 
 #ifndef USE_VULKAN
 #define GLE( ret, name, ... ) extern ret ( APIENTRY * q##name )( __VA_ARGS__ );
@@ -1980,5 +2001,7 @@ extern void VBO_QueueItem( int itemIndex );
 extern void VBO_ClearQueue( void );
 extern void VBO_Flush( void );
 #endif
+
+int R_GetLightmapCoords( const int lightmapIndex, float *x, float *y );
 
 #endif //TR_LOCAL_H

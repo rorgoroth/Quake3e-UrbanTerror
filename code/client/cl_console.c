@@ -99,9 +99,6 @@ cvar_t		*con_size;
 
 int			g_console_field_width;
 
-void		Con_Fixup(console_t *console);
-void		Con_CheckResize(console_t *console);
-
 /*
 ================
 Con_ToggleConsole_f
@@ -459,8 +456,8 @@ void Con_NextTab() {
 Cmd_CompleteTxtName
 ==================
 */
-void Cmd_CompleteTxtName( char *args, int argNum ) {
-	if( argNum == 2 ) {
+static void Cmd_CompleteTxtName(const char *args, int argNum ) {
+	if ( argNum == 2 ) {
 		Field_CompleteFilename( "", "txt", qfalse, FS_MATCH_EXTERN | FS_MATCH_STICK );
 	}
 }
@@ -474,10 +471,14 @@ Con_Init
 void Con_Init( void ) 
 {
 	con_notifytime = Cvar_Get( "con_notifytime", "3", 0 );
+	Cvar_SetDescription( con_notifytime, "Defines how long messages (from players or the system) are on the screen (in seconds)." );
 	con_conspeed = Cvar_Get( "scr_conspeed", "3", 0 );
+	Cvar_SetDescription( con_conspeed, "Console opening/closing scroll speed." );
 	con_autoclear = Cvar_Get("con_autoclear", "1", CVAR_ARCHIVE_ND);
+	Cvar_SetDescription( con_autoclear, "Enable/disable clearing console input text when console is closed." );
 	con_scale = Cvar_Get( "con_scale", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_scale, "0.5", "8", CV_FLOAT );
+	Cvar_SetDescription( con_scale, "Console font size scale." );
 
 	con_timestamp = Cvar_Get( "con_timestamp", "1", CVAR_ARCHIVE );
 	con_size = Cvar_Get( "con_size", "100", CVAR_ARCHIVE );
@@ -523,7 +524,7 @@ void Con_Shutdown( void )
 Con_Fixup
 ===============
 */
-void Con_Fixup(console_t *console) 
+static void Con_Fixup(console_t *console) 
 {
 	int filled;
 
@@ -550,7 +551,7 @@ Con_Linefeed
 Move to newline only when we _really_ need this
 ===============
 */
-void Con_NewLine(console_t *console) 
+static void Con_NewLine(console_t *console)
 {
 	short *s;
 	int i;
@@ -573,7 +574,7 @@ void Con_NewLine(console_t *console)
 Con_Linefeed
 ===============
 */
-void Con_Linefeed(console_t *console, qboolean skipnotify )
+static void Con_Linefeed(console_t *console, qboolean skipnotify )
 {
 	// mark time for transparent overlay
 	if ( console->current >= 0 )	{
@@ -763,7 +764,7 @@ Con_DrawInput
 Draw the editline after a ] prompt
 ================
 */
-void Con_DrawInput( void ) {
+static void Con_DrawInput( void ) {
 	int		y;
 
 	if ( cls.state != CA_DISCONNECTED && !(Key_GetCatcher( ) & KEYCATCH_CONSOLE ) ) {
@@ -788,7 +789,7 @@ Con_DrawNotify
 Draws the last few lines of output transparently over the game top
 ================
 */
-void Con_DrawNotify( void )
+static void Con_DrawNotify( void )
 {
 	int		x, v;
 	short	*text;
@@ -874,7 +875,7 @@ Con_DrawSolidConsole
 Draws the console with the solid background
 ================
 */
-void Con_DrawSolidConsole( float frac ) {
+static void Con_DrawSolidConsole( float frac ) {
 
 	static float conColorValue[4] = { 0.0, 0.0, 0.0, 0.0 };
 	// for cvar value change tracking
@@ -1112,7 +1113,7 @@ void Con_DrawConsole( void ) {
 	} else {
 		// draw notify lines
 		if ( cls.state == CA_ACTIVE ) {
-			Con_DrawNotify ();
+			Con_DrawNotify();
 		}
 	}
 }

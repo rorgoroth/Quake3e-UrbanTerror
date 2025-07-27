@@ -436,6 +436,11 @@ static qboolean CL_GetValue( char* value, int valueSize, const char* key ) {
 		return qtrue;
 	}
 
+	if ( !Q_stricmp( key, "trap_Cvar_SetDescription_Q3E" ) ) {
+		Com_sprintf( value, valueSize, "%i", CG_CVAR_SETDESCRIPTION );
+		return qtrue;
+	}
+
 	return qfalse;
 }
 
@@ -507,9 +512,11 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_FS_SEEK:
 		return FS_VM_SeekFile( args[1], args[2], args[3], H_CGAME );
 
-	case CG_SENDCONSOLECOMMAND:
-		Cbuf_AddText( VMA(1) );
+	case CG_SENDCONSOLECOMMAND: {
+		const char *cmd = VMA(1);
+		Cbuf_NestedAdd( cmd );
 		return 0;
+	}
 	case CG_ADDCOMMAND:
 		CL_AddCgameCommand( VMA(1) );
 		return 0;
@@ -679,7 +686,7 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return args[1];
 	case TRAP_STRNCPY:
 		VM_CHECKBOUNDS( cgvm, args[1], args[3] );
-		strncpy( VMA(1), VMA(2), args[3] );
+		Q_strncpy( VMA(1), VMA(2), args[3] );
 		return args[1];
 	case TRAP_SIN:
 		return FloatAsInt( sin( VMF(1) ) );
@@ -777,6 +784,10 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_IS_RECORDING_DEMO:
 		return clc.demorecording;
 
+	case CG_CVAR_SETDESCRIPTION:
+		Cvar_SetDescription2( (const char*)VMA(1), (const char*)VMA(2) );
+		return 0;
+
 	case CG_TRAP_GETVALUE:
 		VM_CHECKBOUNDS( cgvm, args[1], args[2] );
 		return CL_GetValue( VMA(1), args[2], VMA(3) );
@@ -824,6 +835,8 @@ void CL_InitCGame( void ) {
 	const char			*mapname;
 	int					t1, t2;
 	vmInterpret_t		interpret;
+
+	Cbuf_NestedReset();
 
 	t1 = Sys_Milliseconds();
 
@@ -894,12 +907,19 @@ CL_GameCommand
 See if the current console command is claimed by the cgame
 ====================
 */
+
 qboolean CL_GameCommand( void ) {
+	qboolean bRes;
+
 	if ( !cgvm ) {
 		return qfalse;
 	}
 
-	return VM_Call( cgvm, 0, CG_CONSOLE_COMMAND );
+	bRes = (qboolean)VM_Call( cgvm, 0, CG_CONSOLE_COMMAND );
+
+	Cbuf_NestedReset();
+
+	return bRes;
 }
 
 
@@ -1186,7 +1206,7 @@ void CL_SetCGameTime( void ) {
 
 	//while ( cl.serverTime >= cl.snap.serverTime ) {
 	while ( cl.serverTime - cl.snap.serverTime >= 0 ) {
-		// feed another messag, which should change
+		// feed another message, which should change
 		// the contents of cl.snap
 		CL_ReadDemoMessage();
 		if ( cls.state != CA_ACTIVE ) {

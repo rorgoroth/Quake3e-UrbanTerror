@@ -83,10 +83,10 @@ static void SV_GameSendServerCommand( int clientNum, const char *text ) {
 	if ( clientNum == -1 ) {
 		SV_SendServerCommand( NULL, "%s", text );
 	} else {
-		if ( clientNum < 0 || clientNum >= sv_maxclients->integer ) {
+		if ( clientNum < 0 || clientNum >= sv.maxclients ) {
 			return;
 		}
-		SV_SendServerCommand( svs.clients + clientNum, "%s", text );	
+		SV_SendServerCommand( svs.clients + clientNum, "%s", text );
 	}
 }
 
@@ -99,10 +99,10 @@ Disconnects the client with a message
 ===============
 */
 static void SV_GameDropClient( int clientNum, const char *reason ) {
-	if ( clientNum < 0 || clientNum >= sv_maxclients->integer ) {
+	if ( clientNum < 0 || clientNum >= sv.maxclients ) {
 		return;
 	}
-	SV_DropClient( svs.clients + clientNum, reason );	
+	SV_DropClient( svs.clients + clientNum, reason );
 }
 
 #ifdef USE_AUTH
@@ -233,7 +233,7 @@ static void SV_AdjustAreaPortalState( sharedEntity_t *ent, qboolean open ) {
 SV_EntityContact
 ==================
 */
-static qboolean SV_EntityContact( const vec3_t mins, const vec3_t maxs, const sharedEntity_t *gEnt, int capsule ) {
+static qboolean SV_EntityContact( const vec3_t mins, const vec3_t maxs, const sharedEntity_t *gEnt, const int capsule ) {
 	const float	*origin, *angles;
 	clipHandle_t	ch;
 	trace_t			trace;
@@ -308,7 +308,7 @@ SV_GetUsercmd
 ===============
 */
 static void SV_GetUsercmd( int clientNum, usercmd_t *cmd ) {
-	if ( (unsigned) clientNum < sv_maxclients->integer ) {
+	if ( (unsigned) clientNum < sv.maxclients ) {
 		*cmd = svs.clients[ clientNum ].lastUsercmd;
 	} else {
 		Com_Error( ERR_DROP, "%s(): bad clientNum: %i", __func__, clientNum );
@@ -360,6 +360,12 @@ static qboolean SV_GetValue( char* value, int valueSize, const char* key )
 	if ( !Q_stricmp( key, "SVF_SELF_PORTAL2_Q3E" ) )
 	{
 		Com_sprintf( value, valueSize, "%i", SVF_SELF_PORTAL2 );
+		return qtrue;
+	}
+
+	if ( !Q_stricmp( key, "trap_Cvar_SetDescription_Q3E" ) )
+	{
+		Com_sprintf( value, valueSize, "%i", G_CVAR_SETDESCRIPTION );
 		return qtrue;
 	}
 
@@ -513,7 +519,7 @@ static intptr_t SV_GameSystemCalls( intptr_t *args ) {
 		return 0;
 	case G_GET_ENTITY_TOKEN:
 		{
-			const char *s = COM_Parse( &sv.entityParsePoint );
+			char *s = (char*)COM_Parse( &sv.entityParsePoint );
 			VM_CHECKBOUNDS( gvm, args[1], args[2] );
 			//Q_strncpyz( VMA(1), s, args[2] );
 			// we can't use our optimized Q_strncpyz() function
@@ -521,8 +527,10 @@ static intptr_t SV_GameSystemCalls( intptr_t *args ) {
 			{
 				char *dst = (char*)VMA(1);
 				const int size = args[2]-1;
-				strncpy( dst, s, size );
-				dst[ size ] = '\0';
+				if ( size >= 0 ) {
+					Q_strncpy( dst, s, size );
+					dst[size] = '\0';
+				}
 			}
 			if ( !sv.entityParsePoint && s[0] == '\0' ) {
 				return qfalse;
@@ -583,7 +591,7 @@ static intptr_t SV_GameSystemCalls( intptr_t *args ) {
 	case BOTLIB_USER_COMMAND:
 		{
 			unsigned clientNum = args[1];
-			if ( clientNum < sv_maxclients->integer )
+			if ( clientNum < sv.maxclients )
 			{
 				SV_ClientThink( &svs.clients[ clientNum ], VMA(2) );
 			}
@@ -964,7 +972,7 @@ static intptr_t SV_GameSystemCalls( intptr_t *args ) {
 
 	case TRAP_STRNCPY:
 		VM_CHECKBOUNDS( gvm, args[1], args[3] );
-		strncpy( VMA(1), VMA(2), args[3] );
+		Q_strncpy( VMA(1), VMA(2), args[3] );
 		return args[1];
 
 	case TRAP_SIN:
@@ -1002,6 +1010,10 @@ static intptr_t SV_GameSystemCalls( intptr_t *args ) {
 
 	case G_TESTPRINTFLOAT:
 		return sprintf( VMA(1), "%f", VMF(2) );
+
+	case G_CVAR_SETDESCRIPTION:
+		Cvar_SetDescription2( (const char*)VMA(1), (const char*)VMA(2) );
+		return 0;
 
 	case G_TRAP_GETVALUE:
 		VM_CHECKBOUNDS( gvm, args[1], args[2] );
@@ -1073,7 +1085,7 @@ static void SV_InitGameVM( qboolean restart ) {
 	// a previous level
 	// https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=522
 	// now done before GAME_INIT call
-	for ( i = 0 ; i < sv_maxclients->integer ; i++ ) {
+	for ( i = 0; i < sv.maxclients; i++ ) {
 		svs.clients[i].gentity = NULL;
 	}
 	

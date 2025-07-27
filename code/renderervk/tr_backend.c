@@ -68,7 +68,7 @@ void GL_Bind( image_t *image ) {
 
 	//if ( glState.currenttextures[glState.currenttmu] != texnum ) {
 		image->frameUsed = tr.frameCount;
-		vk_update_descriptor( glState.currenttmu + 2, image->descriptor );
+		vk_update_descriptor( glState.currenttmu + VK_DESC_TEXTURE_BASE, image->descriptor );
 
 	//}
 #else
@@ -454,9 +454,7 @@ static void RB_Hyperspace( void ) {
 	}
 
 	if ( tess.shader != tr.whiteShader ) {
-		if ( tess.numIndexes ) {
-			RB_EndSurface();
-		}
+		RB_EndSurface();
 		RB_BeginSurface( tr.whiteShader, 0 );
 	}
 
@@ -466,13 +464,20 @@ static void RB_Hyperspace( void ) {
 
 	RB_SetGL2D();
 
-	c.rgba[0] = c.rgba[1] = c.rgba[2] = (backEnd.refdef.time & 255);
+	if ( r_teleporterFlash->integer == 0 ) {
+		c.rgba[0] = c.rgba[1] = c.rgba[2] = 0; // fade to black
+	} else {
+		c.rgba[0] = c.rgba[1] = c.rgba[2] = (backEnd.refdef.time & 255); // fade to white
+	}
 	c.rgba[3] = 255;
 
 	RB_AddQuadStamp2( backEnd.refdef.x, backEnd.refdef.y, backEnd.refdef.width, backEnd.refdef.height,
 		0.0, 0.0, 0.0, 0.0, c );
 
 	RB_EndSurface();
+
+	tess.numIndexes = 0;
+	tess.numVertexes = 0;
 
 	backEnd.isHyperspace = qtrue;
 }
@@ -509,15 +514,19 @@ to actually render the visible surfaces for this view
 static void RB_BeginDrawingView( void ) {
 #ifndef USE_VULKAN
 	int clearBits = 0;
+#endif
 
 	// sync with gl if needed
 	if ( r_finish->integer == 1 && !glState.finishCalled ) {
+#ifdef USE_VULKAN
+		vk_queue_wait_idle();
+#else
 		qglFinish();
+#endif
 		glState.finishCalled = qtrue;
 	} else if ( r_finish->integer == 0 ) {
 		glState.finishCalled = qtrue;
 	}
-#endif
 
 	// we will need to change the projection matrix before drawing
 	// 2D images again
@@ -588,7 +597,9 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	int				i;
 	drawSurf_t		*drawSurf;
 	unsigned int	oldSort;
+#ifdef USE_PMLIGHT
 	float			oldShaderSort;
+#endif
 	double			originalTime; // -EC-
 
 	// save original time for entity shader offsets
@@ -603,7 +614,9 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	wasCrosshair = qfalse;
 #endif
 	oldSort = MAX_UINT;
+#ifdef USE_PMLIGHT
 	oldShaderSort = -1;
+#endif
 	depthRange = qfalse;
 
 	backEnd.pc.c_surfaces += numDrawSurfs;
@@ -626,9 +639,9 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		// a "entityMergable" shader is a shader that can have surfaces from separate
 		// entities merged into a single batch, like smoke and blood puff sprites
 		if ( ( (oldSort ^ drawSurfs->sort ) & ~QSORT_REFENTITYNUM_MASK ) || !shader->entityMergable ) {
-			if ( oldShader != NULL ) {
+			//if ( oldShader != NULL ) {
 				RB_EndSurface();
-			}
+			//}
 #ifdef USE_PMLIGHT
 			#define INSERT_POINT SS_FOG
 			if ( backEnd.refdef.numLitSurfs && oldShaderSort < INSERT_POINT && shader->sort >= INSERT_POINT ) {
@@ -1100,29 +1113,22 @@ void RE_UploadCinematic( int w, int h, int cols, int rows, byte *data, int clien
 
 	if ( !tr.scratchImage[ client ] ) {
 		tr.scratchImage[ client ] = R_CreateImage( va( "*scratch%i", client ), NULL, data, cols, rows, IMGFLAG_CLAMPTOEDGE | IMGFLAG_RGB | IMGFLAG_NOSCALE );
+		return;
 	}
 
 	image = tr.scratchImage[ client ];
 
+#ifndef USE_VULKAN
 	GL_Bind( image );
+#endif
 
 	// if the scratchImage isn't in the format we want, specify it as a new texture
 	if ( cols != image->width || rows != image->height ) {
-		byte *buffer;
-		int bytes_per_pixel;
-
 		image->width = image->uploadWidth = cols;
 		image->height = image->uploadHeight = rows;
 #ifdef USE_VULKAN
-		qvkDestroyImage( vk.device, image->handle, NULL );
-		qvkDestroyImageView( vk.device, image->view, NULL );
-
-		vk_create_image( cols, rows, image->internalFormat, 1, image );
-		buffer = resample_image_data( image, data, cols * rows * 4, &bytes_per_pixel );
-		vk_upload_image_data( image->handle, 0, 0, cols, rows, qfalse, buffer, bytes_per_pixel );
-		if ( buffer != data ) {
-			ri.Hunk_FreeTempMemory( buffer );
-		}
+		vk_create_image( image, cols, rows, 1 );
+		vk_upload_image_data( image, 0, 0, cols, rows, 1, data, cols * rows * 4, qfalse );
 #else
 		qglTexImage2D( GL_TEXTURE_2D, 0, image->internalFormat, cols, rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
 		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
@@ -1131,17 +1137,10 @@ void RE_UploadCinematic( int w, int h, int cols, int rows, byte *data, int clien
 		qglTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, gl_clamp_mode );
 #endif
 	} else if ( dirty ) {
-		byte *buffer;
-		int bytes_per_pixel;
-
 		// otherwise, just subimage upload it so that drivers can tell we are going to be changing
 		// it and don't try and do a texture compression
 #ifdef USE_VULKAN
-		buffer = resample_image_data( image, data, cols * rows * 4, &bytes_per_pixel );
-		vk_upload_image_data( image->handle, 0, 0, cols, rows, qfalse, buffer, bytes_per_pixel );
-		if ( buffer != data ) {
-			ri.Hunk_FreeTempMemory( buffer );
-		}
+		vk_upload_image_data( image, 0, 0, cols, rows, 1, data, cols * rows * 4, qtrue );
 #else
 		qglTexSubImage2D( GL_TEXTURE_2D, 0, 0, 0, cols, rows, GL_RGBA, GL_UNSIGNED_BYTE, data );
 #endif
@@ -1448,7 +1447,7 @@ static const void *RB_DrawBuffer( const void *data ) {
 	// force depth range and viewport/scissor updates
 	vk.cmd->depth_range = DEPTH_RANGE_COUNT;
 
-	if ( r_clear->integer ) {
+	if ( r_clear->integer && vk.clearAttachment ) {
 		const vec4_t color = {1, 0, 0.5, 1};
 		backEnd.projection2D = qtrue; // to ensure we have viewport that occupies entire window
 		vk_clear_color( color );
@@ -1487,10 +1486,46 @@ void RB_ShowImages( void )
 		RB_SetGL2D();
 	}
 
-	vk_clear_color( colorBlack );
+	// draw full-screen quad
+	tess.numVertexes = 4;
+
+	tess.svars.colors[0][0].u32 = ~0U; // 255-255-255-255
+	tess.svars.colors[0][1].u32 = ~0U;
+	tess.svars.colors[0][2].u32 = ~0U;
+	tess.svars.colors[0][3].u32 = ~0U;
+
+	tess.svars.texcoords[0][0][0] = 0.0f;
+	tess.svars.texcoords[0][0][1] = 0.0f;
+
+	tess.svars.texcoords[0][1][0] = 1.0f;
+	tess.svars.texcoords[0][1][1] = 0.0f;
+
+	tess.svars.texcoords[0][2][0] = 0.0f;
+	tess.svars.texcoords[0][2][1] = 1.0f;
+
+	tess.svars.texcoords[0][3][0] = 1.0f;
+	tess.svars.texcoords[0][3][1] = 1.0f;
+
+	tess.svars.texcoordPtr[0] = tess.svars.texcoords[0];
+
+	tess.xyz[0][0] = 0.0f;
+	tess.xyz[0][1] = 0.0f;
+
+	tess.xyz[1][0] = (float)glConfig.vidWidth;
+	tess.xyz[1][1] = 0.0f;
+
+	tess.xyz[2][0] = 0.0f;
+	tess.xyz[2][1] = (float)glConfig.vidHeight;
+
+	tess.xyz[3][0] = (float)glConfig.vidWidth;
+	tess.xyz[3][1] = (float)glConfig.vidHeight;
+
+	vk_bind_pipeline( vk.images_debug_pipeline2 );
+	vk_bind_geometry( TESS_XYZ | TESS_RGBA0 | TESS_ST0 );
+	vk_draw_geometry( DEPTH_RANGE_NORMAL, qfalse );
 
 	for ( i = 0; i < tr.numImages; i++ ) {
-		image_t *image = tr.images[i];
+		image_t* image = tr.images[i];
 
 		float w = glConfig.vidWidth / 20;
 		float h = glConfig.vidHeight / 15;
@@ -1503,39 +1538,21 @@ void RB_ShowImages( void )
 			h *= image->uploadHeight / 512.0f;
 		}
 
-		GL_Bind( image );
-
-		tess.svars.colors[0][0].u32 = ~0U; // 255-255-255-255
-		tess.svars.colors[0][1].u32 = ~0U;
-		tess.svars.colors[0][2].u32 = ~0U;
-		tess.svars.colors[0][3].u32 = ~0U;
-
-		tess.numVertexes = 4;
-
 		tess.xyz[0][0] = x;
 		tess.xyz[0][1] = y;
-		tess.svars.texcoords[0][0][0] = 0;
-		tess.svars.texcoords[0][0][1] = 0;
 
 		tess.xyz[1][0] = x + w;
 		tess.xyz[1][1] = y;
-		tess.svars.texcoords[0][1][0] = 1;
-		tess.svars.texcoords[0][1][1] = 0;
 
 		tess.xyz[2][0] = x;
 		tess.xyz[2][1] = y + h;
-		tess.svars.texcoords[0][2][0] = 0;
-		tess.svars.texcoords[0][2][1] = 1;
 
 		tess.xyz[3][0] = x + w;
 		tess.xyz[3][1] = y + h;
-		tess.svars.texcoords[0][3][0] = 1;
-		tess.svars.texcoords[0][3][1] = 1;
 
-		tess.svars.texcoordPtr[0] = tess.svars.texcoords[0];
-
+		GL_Bind( image );
 		vk_bind_pipeline( vk.images_debug_pipeline );
-		vk_bind_geometry( TESS_XYZ | TESS_RGBA0 | TESS_ST0 );
+		vk_bind_geometry( TESS_XYZ );
 		vk_draw_geometry( DEPTH_RANGE_NORMAL, qfalse );
 	}
 
@@ -1705,6 +1722,10 @@ static const void *RB_SwapBuffers( const void *data ) {
 
 #ifdef USE_VULKAN
 	vk_end_frame();
+
+	if ( backEnd.doneSurfaces && !glState.finishCalled ) {
+		vk_queue_wait_idle();
+	}
 #else
 	if ( backEnd.doneSurfaces && !glState.finishCalled ) {
 		qglFinish();
@@ -1744,7 +1765,9 @@ static const void *RB_SwapBuffers( const void *data ) {
 		backEnd.screenshotMask = 0;
 	}
 
-#ifndef USE_VULKAN
+#ifdef USE_VULKAN
+	vk_present_frame();
+#else
 	ri.GLimp_EndFrame();
 #endif
 
@@ -1803,9 +1826,7 @@ void RB_ExecuteRenderCommands( const void *data ) {
 		default:
 			// stop rendering
 #ifdef USE_VULKAN
-			if ( vk.frame_count ) {
-				vk_end_frame();
-			}
+			vk_end_frame();
 //			if (com_errorEntered && (begin_frame_called && !end_frame_called)) {
 //				vk_end_frame();
 //			}

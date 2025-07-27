@@ -112,7 +112,7 @@ static void *S_CodecGetSound( const char *filename, snd_info_t *info )
 		}
 	}
 
-	Com_Printf( S_COLOR_YELLOW "WARNING: Failed to %s sound %s!\n", info ? "load" : "open", filename );
+	Com_DPrintf( S_COLOR_YELLOW "WARNING: Failed to %s sound %s!\n", info ? "load" : "open", filename );
 
 	return NULL;
 }
@@ -126,6 +126,10 @@ S_CodecInit
 void S_CodecInit( void )
 {
 	codecs = NULL;
+
+#ifdef USE_OGG_VORBIS
+	S_CodecRegister( &ogg_codec );
+#endif
 
 	// Register wav codec last so that it is always tried first when a file extension was not found
 	S_CodecRegister( &wav_codec );

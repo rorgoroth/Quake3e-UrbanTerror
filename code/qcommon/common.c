@@ -30,11 +30,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <sys/time.h>
 #else
 #include <winsock.h>
+#if defined(_DEBUG)
+#include "../win32/win_local.h"
+#endif
 #endif
 
 #include "../client/keys.h"
 
-const int demo_protocols[] = { 66, 67, PROTOCOL_VERSION, URT_PROTOCOL_VERSION, NEW_PROTOCOL_VERSION, 0 };
+const int demo_protocols[] = { 66, 67, OLD_PROTOCOL_VERSION, URT_PROTOCOL_VERSION, NEW_PROTOCOL_VERSION, 0 };
 
 #define USE_MULTI_SEGMENT // allocate additional zone segments on demand
 
@@ -68,6 +71,7 @@ cvar_t	*com_timescale;
 static cvar_t *com_fixedtime;
 cvar_t	*com_journal;
 cvar_t	*com_protocol;
+qboolean com_protocolCompat;
 #ifndef DEDICATED
 cvar_t	*com_maxfps;
 cvar_t	*com_maxfpsUnfocused;
@@ -80,11 +84,10 @@ cvar_t	*com_affinityMask;
 static cvar_t *com_logfile;		// 1 = buffer log, 2 = flush after each print
 static cvar_t *com_showtrace;
 cvar_t	*com_version;
-cvar_t	*com_buildScript;	// for automated data building scripts
-cvar_t	*com_blood;
+static cvar_t *com_buildScript;	// for automated data building scripts
 
 #ifndef DEDICATED
-cvar_t	*com_introPlayed;
+static cvar_t	*com_introPlayed;
 cvar_t	*com_skipIdLogo;
 
 cvar_t	*cl_paused;
@@ -168,7 +171,7 @@ to the appropriate place.
 A raw string should NEVER be passed as fmt, because of "%f" type crashers.
 =============
 */
-void QDECL Com_Printf( const char *fmt, ... ) {
+void FORMAT_PRINTF(1, 2) QDECL Com_Printf( const char *fmt, ... ) {
 	static qboolean opening_qconsole = qfalse;
 	va_list		argptr;
 	char		msg[MAXPRINTMSG];
@@ -207,36 +210,36 @@ void QDECL Com_Printf( const char *fmt, ... ) {
 		// TTimo: only open the qconsole.log if the filesystem is in an initialized state
 		//   also, avoid recursing in the qconsole.log opening (i.e. if fs_debug is on)
 		if ( logfile == FS_INVALID_HANDLE && FS_Initialized() && !opening_qconsole ) {
-			struct tm *newtime;
-			time_t aclock;
+			const char *logName = "qconsole.log";
 			int mode;
 
 			opening_qconsole = qtrue;
 
-			time( &aclock );
-			newtime = localtime( &aclock );
-
 			mode = com_logfile->integer - 1;
 
 			if ( mode & 2 )
-				logfile = FS_FOpenFileAppend( "qconsole.log" );
+				logfile = FS_FOpenFileAppend( logName );
 			else
-				logfile = FS_FOpenFileWrite( "qconsole.log" );
+				logfile = FS_FOpenFileWrite( logName );
 
-			if ( logfile != FS_INVALID_HANDLE )
-			{
-				Com_Printf( "logfile opened on %s\n", asctime( newtime ) );
+			if ( logfile != FS_INVALID_HANDLE ) {
+				struct tm *newtime;
+				time_t aclock;
+				char timestr[32];
 
-				if ( mode & 1 )
-				{
+				time( &aclock );
+				newtime = localtime( &aclock );
+				strftime( timestr, sizeof( timestr ), "%a %b %d %X %Y", newtime );
+
+				Com_Printf( "logfile opened on %s\n", timestr );
+
+				if ( mode & 1 ) {
 					// force it to not buffer so we get valid
 					// data even if we are crashing
 					FS_ForceFlush( logfile );
 				}
-			}
-			else
-			{
-				Com_Printf( "Opening qconsole.log failed!\n" );
+			} else {
+				Com_Printf( S_COLOR_YELLOW "Opening %s failed!\n", logName );
 				Cvar_Set( "logfile", "0" );
 			}
 
@@ -256,7 +259,7 @@ Com_DPrintf
 A Com_Printf that only shows up if the "developer" cvar is set
 ================
 */
-void QDECL Com_DPrintf( const char *fmt, ...) {
+void FORMAT_PRINTF(1, 2) QDECL Com_DPrintf( const char *fmt, ... ) {
 	va_list		argptr;
 	char		msg[MAXPRINTMSG];
 
@@ -280,7 +283,7 @@ Both client and server can use this, and it will
 do the appropriate things.
 =============
 */
-void QDECL Com_Error( errorParm_t code, const char *fmt, ... ) {
+void NORETURN FORMAT_PRINTF(2, 3) QDECL Com_Error( errorParm_t code, const char *fmt, ... ) {
 	va_list		argptr;
 	static int	lastErrorTime;
 	static int	errorCount;
@@ -290,6 +293,7 @@ void QDECL Com_Error( errorParm_t code, const char *fmt, ... ) {
 #if defined(_WIN32) && defined(_DEBUG)
 	if ( code != ERR_DISCONNECT && code != ERR_NEED_CD ) {
 		if ( !com_noErrorInterrupt->integer ) {
+			ShowWindow( g_wv.hWnd, SW_MINIMIZE );
 			DebugBreak();
 		}
 	}
@@ -304,7 +308,7 @@ void QDECL Com_Error( errorParm_t code, const char *fmt, ... ) {
 
 	com_errorEntered = qtrue;
 
-	Cvar_Set( "com_errorCode", va( "%i", code ) );
+	Cvar_SetIntegerValue( "com_errorCode", code );
 
 	// when we are running automated scripts, make sure we
 	// know if anything failed
@@ -480,7 +484,7 @@ static void Com_ParseCommandLine( char *commandLine ) {
 			inq = !inq;
 		}
 		// look for a + separating character
-		// if commandLine came from a file, we might have real line seperators
+		// if commandLine came from a file, we might have real line separators
 		if ( (*commandLine == '+' && !inq) || *commandLine == '\n'  || *commandLine == '\r' ) {
 			if ( com_numConsoleLines == MAX_CONSOLE_LINES ) {
 				break;
@@ -975,8 +979,8 @@ all big things are allocated on the hunk.
 
 #ifdef ZONE_DEBUG
 typedef struct zonedebug_s {
-	char *label;
-	char *file;
+	const char *label;
+	const char *file;
 	int line;
 	int allocSize;
 } zonedebug_t;
@@ -1483,7 +1487,7 @@ void *Z_TagMalloc( int size, memtag_t tag ) {
 
 	do {
 		if ( rover == start ) {
-			// scaned all the way around the list
+			// scanned all the way around the list
 #ifdef ZONE_DEBUG
 			Z_LogHeap();
 			Com_Error( ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone: %s, line: %d (%s)",
@@ -1732,19 +1736,17 @@ CopyString
 ========================
 */
 char *CopyString( const char *in ) {
-	char	*out;
+	char *out;
 #ifdef USE_STATIC_TAGS
-	if (!in[0]) {
+	if ( in[0] == '\0' ) {
 		return ((char *)&emptystring) + sizeof(memblock_t);
 	}
-	else if (!in[1]) {
-		if (in[0] >= '0' && in[0] <= '9') {
-			return ((char *)&numberstring[in[0]-'0']) + sizeof(memblock_t);
-		}
+	else if ( in[0] >= '0' && in[0] <= '9' && in[1] == '\0' ) {
+		return ((char *)&numberstring[in[0]-'0']) + sizeof(memblock_t);
 	}
 #endif
-	out = S_Malloc (strlen(in)+1);
-	strcpy (out, in);
+	out = S_Malloc( strlen( in ) + 1 );
+	strcpy( out, in );
 	return out;
 }
 
@@ -1803,8 +1805,8 @@ typedef struct hunkblock_s {
 	int size;
 	byte printed;
 	struct hunkblock_s *next;
-	char *label;
-	char *file;
+	const char *label;
+	const char *file;
 	int line;
 } hunkblock_t;
 
@@ -1979,7 +1981,7 @@ Com_TouchMemory
 Touch all known used data to make sure it is paged in
 ===============
 */
-void Com_TouchMemory( void ) {
+unsigned int Com_TouchMemory( void ) {
 	const memblock_t *block;
 	const memzone_t *zone;
 	int		start, end;
@@ -2019,6 +2021,8 @@ void Com_TouchMemory( void ) {
 	end = Sys_Milliseconds();
 
 	Com_Printf( "Com_TouchMemory: %i msec\n", end - start );
+
+	return sum; // just to silent compiler warning
 }
 
 
@@ -2056,6 +2060,7 @@ static void Com_InitZoneMemory( void ) {
 	// allocate the random block zone
 	cv = Cvar_Get( "com_zoneMegs", XSTRING( DEF_COMZONEMEGS ), CVAR_LATCH | CVAR_ARCHIVE );
 	Cvar_CheckRange( cv, "1", NULL, CV_INTEGER );
+	Cvar_SetDescription( cv, "Initial amount of memory (RAM) allocated for the main block zone (in MB)." );
 
 #ifndef USE_MULTI_SEGMENT
 	if ( cv->integer < DEF_COMZONEMEGS )
@@ -2164,7 +2169,7 @@ static void Com_InitHunkMemory( void ) {
 
 	// make sure the file system has allocated and "not" freed any temp blocks
 	// this allows the config and product id files ( journal files too ) to be loaded
-	// by the file system without redunant routines in the file system utilizing different
+	// by the file system without redundant routines in the file system utilizing different
 	// memory systems
 	if ( FS_LoadStack() != 0 ) {
 		Com_Error( ERR_FATAL, "Hunk initialization failed. File system load stack not zero" );
@@ -2173,7 +2178,7 @@ static void Com_InitHunkMemory( void ) {
 	// allocate the stack based hunk allocator
 	cv = Cvar_Get( "com_hunkMegs", XSTRING( DEF_COMHUNKMEGS ), CVAR_LATCH | CVAR_ARCHIVE );
 	Cvar_CheckRange( cv, XSTRING( MIN_COMHUNKMEGS ), NULL, CV_INTEGER );
-	Cvar_SetDescription( cv, "The size of the hunk memory segment" );
+	Cvar_SetDescription( cv, "The size of the hunk memory segment." );
 
 	s_hunkTotal = cv->integer * 1024 * 1024;
 
@@ -2404,7 +2409,7 @@ void *Hunk_AllocateTempMemory( int size ) {
 
 	// return a Z_Malloc'd block if the hunk has not been initialized
 	// this allows the config and product id files ( journal files too ) to be loaded
-	// by the file system without redunant routines in the file system utilizing different
+	// by the file system without redundant routines in the file system utilizing different
 	// memory systems
 	if ( s_hunkData == NULL )
 	{
@@ -2452,7 +2457,7 @@ void Hunk_FreeTempMemory( void *buf ) {
 
 	// free with Z_Free if the hunk has not been initialized
 	// this allows the config and product id files ( journal files too ) to be loaded
-	// by the file system without redunant routines in the file system utilizing different
+	// by the file system without redundant routines in the file system utilizing different
 	// memory systems
 	if ( s_hunkData == NULL )
 	{
@@ -2829,11 +2834,13 @@ Returns last event time
 */
 int Com_EventLoop( void ) {
 	sysEvent_t	ev;
-	netadr_t	evFrom;
+
+#ifndef DEDICATED
 	byte		bufData[ MAX_MSGLEN_BUF ];
 	msg_t		buf;
 
 	MSG_Init( &buf, bufData, MAX_MSGLEN );
+#endif // !DEDICATED
 
 	while ( 1 ) {
 		ev = Com_GetEvent();
@@ -2842,20 +2849,19 @@ int Com_EventLoop( void ) {
 		if ( ev.evType == SE_NONE ) {
 			// manually send packet events for the loopback channel
 #ifndef DEDICATED
+			netadr_t evFrom;
 			while ( NET_GetLoopPacket( NS_CLIENT, &evFrom, &buf ) ) {
 				CL_PacketEvent( &evFrom, &buf );
 			}
-#endif
 			while ( NET_GetLoopPacket( NS_SERVER, &evFrom, &buf ) ) {
 				// if the server just shut down, flush the events
 				if ( com_sv_running->integer ) {
 					Com_RunAndTimeServerPacket( &evFrom, &buf );
 				}
 			}
-
+#endif // !DEDICATED
 			return ev.evTime;
 		}
-
 
 		switch ( ev.evType ) {
 #ifndef DEDICATED
@@ -2871,7 +2877,7 @@ int Com_EventLoop( void ) {
 		case SE_JOYSTICK_AXIS:
 			CL_JoystickEvent( ev.evValue, ev.evValue2, ev.evTime );
 			break;
-#endif
+#endif // !DEDICATED
 		case SE_CONSOLE:
 			Cbuf_AddText( (char *)ev.evPtr );
 			Cbuf_AddText( "\n" );
@@ -2986,7 +2992,7 @@ static void Com_ExecuteCfg( void )
 	Cbuf_ExecuteText(EXEC_NOW, "exec default.cfg\n");
 	Cbuf_Execute(); // Always execute after exec to prevent text buffer overflowing
 
-	if(!Com_SafeMode())
+	if (!Com_SafeMode())
 	{
 		// skip the q3config.cfg and autoexec.cfg if "safe" is on the command line
 		Cbuf_ExecuteText(EXEC_NOW, "exec " Q3CONFIG_CFG "\n");
@@ -3266,6 +3272,12 @@ out:
 ** --------------------------------------------------------------------------------
 */
 
+#ifdef USE_AFFINITY_MASK
+static uint64_t eCoreMask;
+static uint64_t pCoreMask;
+static uint64_t affinityMask; // saved at startup
+#endif
+
 #if (idx64 || id386)
 
 #if defined _MSC_VER
@@ -3274,6 +3286,28 @@ static void CPUID( int func, unsigned int *regs )
 {
 	__cpuid( (int*)regs, func );
 }
+
+#ifdef USE_AFFINITY_MASK
+#if idx64
+extern void CPUID_EX( int func, int param, unsigned int *regs );
+#else
+void CPUID_EX( int func, int param, unsigned int *regs )
+{
+	__asm {
+		push edi
+		mov eax, func
+		mov ecx, param
+		cpuid
+		mov edi, regs
+		mov [edi +0], eax
+		mov [edi +4], ebx
+		mov [edi +8], ecx
+		mov [edi+12], edx
+		pop edi
+	}
+}
+#endif // !idx64
+#endif // USE_AFFINITY_MASK
 
 #else // clang/gcc/mingw
 
@@ -3287,11 +3321,26 @@ static void CPUID( int func, unsigned int *regs )
 		"a"(func) );
 }
 
+#ifdef USE_AFFINITY_MASK
+static void CPUID_EX( int func, int param, unsigned int *regs )
+{
+	__asm__ __volatile__( "cpuid" :
+		"=a"(regs[0]),
+		"=b"(regs[1]),
+		"=c"(regs[2]),
+		"=d"(regs[3]) :
+		"a"(func),
+		"c"(param) );
+}
+#endif // USE_AFFINITY_MASK
+
 #endif  // clang/gcc/mingw
 
 static void Sys_GetProcessorId( char *vendor )
 {
-	unsigned int regs[4];
+	uint32_t regs[4]; // EAX, EBX, ECX, EDX
+	uint32_t cpuid_level_ex;
+	char vendor_str[12 + 1]; // short CPU vendor string
 
 	// setup initial features
 #if idx64
@@ -3299,9 +3348,20 @@ static void Sys_GetProcessorId( char *vendor )
 #else
 	CPU_Flags = 0;
 #endif
+	vendor[0] = '\0';
+
+	CPUID( 0x80000000, regs );
+	cpuid_level_ex = regs[0];
+
+	// get CPUID level & short CPU vendor string
+	CPUID( 0x0, regs );
+	memcpy(vendor_str + 0, (char*)&regs[1], 4);
+	memcpy(vendor_str + 4, (char*)&regs[3], 4);
+	memcpy(vendor_str + 8, (char*)&regs[2], 4);
+	vendor_str[12] = '\0';
 
 	// get CPU feature bits
-	CPUID( 1, regs );
+	CPUID( 0x1, regs );
 
 	// bit 15 of EDX denotes CMOV/FCMOV/FCOMI existence
 	if ( regs[3] & ( 1 << 15 ) )
@@ -3328,54 +3388,97 @@ static void Sys_GetProcessorId( char *vendor )
 		CPU_Flags |= CPU_SSE41;
 
 	if ( vendor ) {
-		int print_flags = CPU_Flags;
-#if idx64
-		strcpy( vendor, "64-bit " );
-		vendor += strlen( vendor );
-		// do not print default 64-bit features in 32-bit mode
-		print_flags &= ~(CPU_FCOM | CPU_MMX | CPU_SSE | CPU_SSE2);
-#else
-		vendor[0] = '\0';
-#endif
-		// get CPU vendor string
-		CPUID( 0, regs );
-		memcpy( vendor+0, (char*) &regs[1], 4 );
-		memcpy( vendor+4, (char*) &regs[3], 4 );
-		memcpy( vendor+8, (char*) &regs[2], 4 );
-		vendor[12] = '\0'; vendor += 12;
-
-		if ( print_flags ) {
-			// print features
-			strcat( vendor, " w/" );
-			if ( print_flags & CPU_FCOM )
-				strcat( vendor, " CMOV" );
-			if ( print_flags & CPU_MMX )
-				strcat( vendor, " MMX" );
-			if ( print_flags & CPU_SSE )
-				strcat( vendor, " SSE" );
-			if ( print_flags & CPU_SSE2 )
-				strcat( vendor, " SSE2" );
-			//if ( CPU_Flags & CPU_SSE3 )
-			//	strcat( vendor, " SSE3" );
-			if ( print_flags & CPU_SSE41 )
-				strcat( vendor, " SSE4.1" );
+		if ( cpuid_level_ex >= 0x80000004 ) {
+			// read CPU Brand string
+			uint32_t i;
+			for ( i = 0x80000002; i <= 0x80000004; i++) {
+				CPUID( i, regs );
+				memcpy( vendor+0, (char*)&regs[0], 4 );
+				memcpy( vendor+4, (char*)&regs[1], 4 );
+				memcpy( vendor+8, (char*)&regs[2], 4 );
+				memcpy( vendor+12, (char*)&regs[3], 4 );
+				vendor[16] = '\0';
+				vendor += strlen( vendor );
+			}
+		} else {
+			const int print_flags = CPU_Flags;
+			vendor = Q_stradd( vendor, vendor_str );
+			if (print_flags) {
+				// print features
+				strcat(vendor, " w/");
+				if (print_flags & CPU_FCOM)
+					strcat(vendor, " CMOV");
+				if (print_flags & CPU_MMX)
+					strcat(vendor, " MMX");
+				if (print_flags & CPU_SSE)
+					strcat(vendor, " SSE");
+				if (print_flags & CPU_SSE2)
+					strcat(vendor, " SSE2");
+				//if ( CPU_Flags & CPU_SSE3 )
+				//	strcat( vendor, " SSE3" );
+				if (print_flags & CPU_SSE41)
+					strcat(vendor, " SSE4.1");
+			}
 		}
 	}
 }
 
+
+#ifdef USE_AFFINITY_MASK
+static void DetectCPUCoresConfig( void )
+{
+	uint32_t regs[4];
+	uint32_t i;
+
+	// get highest function parameter and vendor id
+	CPUID( 0x0, regs );
+	if ( regs[1] != 0x756E6547 || regs[2] != 0x6C65746E || regs[3] != 0x49656E69 || regs[0] < 0x1A ) {
+		// non-intel signature or too low cpuid level - unsupported
+		eCoreMask = pCoreMask = affinityMask;
+		return;
+	}
+
+	eCoreMask = 0;
+	pCoreMask = 0;
+
+	for ( i = 0; i < sizeof( affinityMask ) * 8; i++ ) {
+		const uint64_t mask = 1ULL << i;
+		if ( (mask & affinityMask) && Sys_SetAffinityMask( mask ) ) {
+			CPUID_EX( 0x1A, 0x0, regs );
+			switch ( (regs[0] >> 24) & 0xFF ) {
+				case 0x20: eCoreMask |= mask; break;
+				case 0x40: pCoreMask |= mask; break;
+				default: // non-existing leaf
+					eCoreMask = pCoreMask = 0;
+					break;
+			}
+		}
+	}
+
+	// restore original affinity
+	Sys_SetAffinityMask( affinityMask );
+
+	if ( pCoreMask == 0 || eCoreMask == 0 ) {
+		// if either mask is empty - assume non-hybrid configuration
+		eCoreMask = pCoreMask = affinityMask;
+	}
+}
+#endif // USE_AFFINITY_MASK
+
 #else // non-x86
 
-#ifdef _WIN32
+#ifndef __linux__
 
 static void Sys_GetProcessorId( char *vendor )
 {
 	Com_sprintf( vendor, 100, "%s", ARCH_STRING );
 }
 
-#else // not _WIN32
+#else // __linux__
+
+#include <sys/auxv.h>
 
 #if arm32
-#include <sys/auxv.h>
 #include <asm/hwcap.h>
 #endif
 
@@ -3417,17 +3520,17 @@ static void Sys_GetProcessorId( char *vendor )
 			strcat( vendor, " QVM-bytecode" );
 		}
 	}
-#else
+#else // !arm32
 	CPU_Flags = 0;
 #if arm64
-	Com_sprintf( vendor, 100, "ARM %s", ARCH_STRING );
+	Com_sprintf( vendor, 100, "%s", ARCH_STRING );
 #else
 	Com_sprintf( vendor, 128, "%s %s", ARCH_STRING, (const char*)getauxval( AT_PLATFORM ) );
 #endif
-#endif
+#endif // !arm32
 }
 
-#endif // !_WIN32
+#endif // __linux__
 
 #endif // non-x86
 
@@ -3544,6 +3647,99 @@ void Sys_SnapVector( float *vector )
 
 #endif // clang/gcc/mingw
 
+#ifdef USE_AFFINITY_MASK
+
+static int hex_code( const int code ) {
+	if ( code >= '0' && code <= '9' ) {
+		return code - '0';
+	}
+	if ( code >= 'A' && code <= 'F' ) {
+		return code - 'A' + 10;
+	}
+	if ( code >= 'a' && code <= 'f' ) {
+		return code - 'a' + 10;
+	}
+	return -1;
+}
+
+
+static const char *parseAffinityMask( const char *str, uint64_t *outv, int level ) {
+	uint64_t v, mask = 0;
+
+	while ( *str != '\0' ) {
+		if ( *str == 'A' || *str == 'a' ) {
+			mask = affinityMask;
+			++str;
+			continue;
+		}
+		else if ( *str == 'P' || *str == 'p' ) {
+			mask = pCoreMask;
+			++str;
+			continue;
+		}
+		else if ( *str == 'E' || *str == 'e' ) {
+			mask = eCoreMask;
+			++str;
+			continue;
+		}
+		else if ( *str == '0' && (str[1] == 'x' || str[1] == 'X') && (v = hex_code( str[2] )) >= 0 ) {
+			int hex;
+			str += 3; // 0xH
+			while ( (hex = hex_code( *str )) >= 0 ) {
+				v = v * 16 + hex;
+				str++;
+			}
+			mask = v;
+			continue;
+		}
+		else if ( *str >= '0' && *str <= '9' ) {
+			mask = *str++ - '0';
+			while ( *str >= '0' && *str <= '9' ) {
+				mask = mask * 10 + *str - '0';
+				++str;
+			}
+			continue;
+		}
+
+		if ( level == 0 ) {
+			while ( *str == '+' || *str == '-' ) {
+				str = parseAffinityMask( str + 1, &v, level + 1 );
+				switch ( *str ) {
+					case '+': mask |= v; break;
+					case '-': mask &= ~v; break;
+					default: str = ""; break;
+				}
+			}
+			if ( *str != '\0' ) {
+				++str; // skip unknown characters
+			}
+		} else {
+			break;
+		}
+	}
+
+	*outv = mask;
+	return str;
+}
+
+
+// parse and set affinity mask
+static void Com_SetAffinityMask( const char *str )
+{
+	uint64_t mask = 0;
+
+	parseAffinityMask( str, &mask, 0 );
+
+	if ( ( mask & affinityMask ) == 0 ) {
+		mask = affinityMask; // reset to default
+	}
+
+	if ( mask != 0 ) {
+		Sys_SetAffinityMask( mask );
+	}
+}
+#endif // USE_AFFINITY_MASK
+
 
 /*
 =================
@@ -3553,6 +3749,9 @@ Com_Init
 void Com_Init( char *commandLine ) {
 	const char *s;
 	int	qport;
+
+	// get the initial time base
+	Sys_Milliseconds();
 
 	Com_Printf( "%s %s %s\n", SVN_VERSION, PLATFORM_STRING, __DATE__ );
 
@@ -3602,6 +3801,7 @@ void Com_Init( char *commandLine ) {
 	Com_StartupVariable( "journal" );
 	com_journal = Cvar_Get( "journal", "0", CVAR_INIT | CVAR_PROTECTED );
 	Cvar_CheckRange( com_journal, "0", "2", CV_INTEGER );
+	Cvar_SetDescription( com_journal, "When enabled, writes events and its data to 'journal.dat' and 'journaldata.dat'.");
 
 	Com_StartupVariable( "sv_master1" );
 	Com_StartupVariable( "sv_master2" );
@@ -3610,7 +3810,17 @@ void Com_Init( char *commandLine ) {
 	Cvar_Get( "sv_master2", MASTER2_SERVER_NAME, CVAR_INIT );
 	Cvar_Get( "sv_master3", MASTER3_SERVER_NAME, CVAR_INIT );
 
-	com_protocol = Cvar_Get( "protocol", XSTRING( PROTOCOL_VERSION ), 0 );
+	com_protocol = Cvar_Get( "protocol", XSTRING( DEFAULT_PROTOCOL_VERSION ), 0 );
+	Cvar_SetDescription( com_protocol, "Specify network protocol version number, use -compat suffix for OpenArena compatibility.");
+	if ( Q_stristr( com_protocol->string, "-compat" ) > com_protocol->string ) {
+		// strip -compat suffix
+		Cvar_Set2( "protocol", va( "%i", com_protocol->integer ), qtrue );
+		// enforce legacy stream encoding but with new challenge format
+		com_protocolCompat = qtrue;
+	} else {
+		com_protocolCompat = qfalse;
+	}
+
 	Cvar_CheckRange( com_protocol, "0", NULL, CV_INTEGER );
 	com_protocol->flags &= ~CVAR_USER_CREATED;
 	com_protocol->flags |= CVAR_SERVERINFO | CVAR_ROM;
@@ -3619,6 +3829,15 @@ void Com_Init( char *commandLine ) {
 	Com_InitKeyCommands();
 
 	FS_InitFilesystem();
+
+	com_logfile = Cvar_Get( "logfile", "0", CVAR_TEMP );
+	Cvar_CheckRange( com_logfile, "0", "4", CV_INTEGER );
+	Cvar_SetDescription( com_logfile, "System console logging:\n"
+		" 0 - disabled\n"
+		" 1 - overwrite mode, buffered\n"
+		" 2 - overwrite mode, synced\n"
+		" 3 - append mode, buffered\n"
+		" 4 - append mode, synced\n" );
 
 	Com_InitJournaling();
 
@@ -3635,6 +3854,7 @@ void Com_Init( char *commandLine ) {
 	com_dedicated = Cvar_Get( "dedicated", "0", CVAR_LATCH );
 	Cvar_CheckRange( com_dedicated, "0", "2", CV_INTEGER );
 #endif
+	Cvar_SetDescription( com_dedicated, "Enables dedicated server mode.\n 0: Listen server\n 1: Unlisted dedicated server \n 2: Listed dedicated server" );
 	// allocate the stack based hunk allocator
 	Com_InitHunkMemory();
 
@@ -3647,56 +3867,65 @@ void Com_Init( char *commandLine ) {
 	//
 #ifndef DEDICATED
 	com_maxfps = Cvar_Get( "com_maxfps", "125", 0 ); // try to force that in some light way
-	com_maxfpsUnfocused = Cvar_Get( "com_maxfpsUnfocused", "60", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( com_maxfps, "0", "1000", CV_INTEGER );
+	Cvar_SetDescription( com_maxfps, "Sets maximum frames per second." );
+	com_maxfpsUnfocused = Cvar_Get( "com_maxfpsUnfocused", "60", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( com_maxfpsUnfocused, "0", "1000", CV_INTEGER );
+	Cvar_SetDescription( com_maxfpsUnfocused, "Sets maximum frames per second in unfocused game window." );
 	com_yieldCPU = Cvar_Get( "com_yieldCPU", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( com_yieldCPU, "0", "16", CV_INTEGER );
+	Cvar_SetDescription( com_yieldCPU, "Attempt to sleep specified amount of time between rendered frames when game is active, this will greatly reduce CPU load. Use 0 only if you're experiencing some lag." );
 #endif
 
 #ifdef USE_AFFINITY_MASK
-	com_affinityMask = Cvar_Get( "com_affinityMask", "0", CVAR_ARCHIVE_ND );
+	com_affinityMask = Cvar_Get( "com_affinityMask", "", CVAR_ARCHIVE_ND );
+	Cvar_SetDescription( com_affinityMask, "Bind game process to bitmask-specified CPU core(s), special characters:\n A or a - all default cores\n P or p - performance cores\n E or e - efficiency cores\n 0x<value> - use hexadecimal notation\n + or - can be used to add or exclude particular cores" );
 	com_affinityMask->modified = qfalse;
 #endif
 
-	com_blood = Cvar_Get( "com_blood", "1", CVAR_ARCHIVE_ND );
-
-	com_logfile = Cvar_Get( "logfile", "0", CVAR_TEMP );
-	Cvar_CheckRange( com_logfile, "0", "4", CV_INTEGER );
-	Cvar_SetDescription( com_logfile, "System console logging:\n"
-		" 0 - disabled\n"
-		" 1 - overwrite mode, buffered\n"
-		" 2 - overwrite mode, synced\n"
-		" 3 - append mode, buffered\n"
-		" 4 - append mode, synced\n" );
+	// com_blood = Cvar_Get( "com_blood", "1", CVAR_ARCHIVE_ND );
 
 	com_timescale = Cvar_Get( "timescale", "1", CVAR_CHEAT | CVAR_SYSTEMINFO );
 	Cvar_CheckRange( com_timescale, "0", NULL, CV_FLOAT );
+	Cvar_SetDescription( com_timescale, "System timing factor:\n < 1: Slows the game down\n = 1: Regular speed\n > 1: Speeds the game up" );
 	com_fixedtime = Cvar_Get( "fixedtime", "0", CVAR_CHEAT );
+	Cvar_SetDescription( com_fixedtime, "Toggle the rendering of every frame the game will wait until each frame is completely rendered before sending the next frame." );
 	com_showtrace = Cvar_Get( "com_showtrace", "0", CVAR_CHEAT );
+	Cvar_SetDescription( com_showtrace, "Debugging tool that prints out trace information." );
 	com_viewlog = Cvar_Get( "viewlog", "0", 0 );
+	Cvar_SetDescription( com_viewlog, "Toggle the display of the startup console window over the game screen." );
 	com_speeds = Cvar_Get( "com_speeds", "0", 0 );
+	Cvar_SetDescription( com_speeds, "Prints speed information per frame to the console. Used for debugging." );
 	com_cameraMode = Cvar_Get( "com_cameraMode", "0", CVAR_CHEAT );
 
 #ifndef DEDICATED
 	com_timedemo = Cvar_Get( "timedemo", "0", 0 );
 	Cvar_CheckRange( com_timedemo, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( com_timedemo, "When set to '1' times a demo and returns frames per second like a benchmark." );
 	cl_paused = Cvar_Get( "cl_paused", "0", CVAR_ROM );
+	Cvar_SetDescription( cl_paused, "Read-only CVAR to toggle functionality of paused games (the variable holds the status of the paused flag on the client side)." );
 	cl_packetdelay = Cvar_Get( "cl_packetdelay", "0", CVAR_CHEAT );
+	Cvar_SetDescription( cl_packetdelay, "Artificially set the client's latency. Simulates packet delay, which can lead to packet loss." );
 	com_cl_running = Cvar_Get( "cl_running", "0", CVAR_ROM | CVAR_NOTABCOMPLETE );
+	Cvar_SetDescription( com_cl_running, "Can be used to check the status of the client game." );
 #endif
 
 	sv_paused = Cvar_Get( "sv_paused", "0", CVAR_ROM );
 	sv_packetdelay = Cvar_Get( "sv_packetdelay", "0", CVAR_CHEAT );
+	Cvar_SetDescription( sv_packetdelay, "Simulates packet delay, which can lead to packet loss. Server side." );
 	com_sv_running = Cvar_Get( "sv_running", "0", CVAR_ROM | CVAR_NOTABCOMPLETE );
+	Cvar_SetDescription( com_sv_running, "Communicates to game modules if there is a server currently running." );
 
 	com_buildScript = Cvar_Get( "com_buildScript", "0", 0 );
+	Cvar_SetDescription( com_buildScript, "Loads all game assets, regardless whether they are required or not." );
 
 	Cvar_Get( "com_errorMessage", "", CVAR_ROM | CVAR_NORESTART );
 
 #ifndef DEDICATED
 	com_introPlayed = Cvar_Get( "com_introplayed", "0", CVAR_ARCHIVE );
+	Cvar_SetDescription( com_introPlayed, "Skips the introduction cinematic." );
 	com_skipIdLogo  = Cvar_Get( "com_skipIdLogo", "0", CVAR_ARCHIVE );
+	Cvar_SetDescription( com_skipIdLogo, "Skip playing Id Software logo cinematic at startup." );
 #endif
 
 	if ( com_dedicated->integer ) {
@@ -3722,6 +3951,7 @@ void Com_Init( char *commandLine ) {
 
 	s = va( "%s %s %s", Q3_VERSION, PLATFORM_STRING, __DATE__ );
 	com_version = Cvar_Get( "version", s, CVAR_PROTECTED | CVAR_ROM | CVAR_SERVERINFO );
+	Cvar_SetDescription( com_version, "Read-only CVAR to see the version of the game." );
 
 	// this cvar is the single entry point of the entire extension system
 	Cvar_Get( "//trap_GetValue", va( "%i", COM_TRAP_GETVALUE ), CVAR_PROTECTED | CVAR_ROM | CVAR_NOTABCOMPLETE );
@@ -3730,9 +3960,8 @@ void Com_Init( char *commandLine ) {
 
 	// CPU detection
 	Cvar_Get( "sys_cpustring", "detect", CVAR_PROTECTED | CVAR_ROM | CVAR_NORESTART );
-	if ( !Q_stricmp( Cvar_VariableString( "sys_cpustring" ), "detect" ) )
-	{
-		static char vendor[128];
+	if ( !Q_stricmp( Cvar_VariableString( "sys_cpustring" ), "detect" ) ) {
+		char vendor[128];
 		Com_Printf( "...detecting CPU, found " );
 		Sys_GetProcessorId( vendor );
 		Cvar_Set( "sys_cpustring", vendor );
@@ -3740,8 +3969,15 @@ void Com_Init( char *commandLine ) {
 	Com_Printf( "%s\n", Cvar_VariableString( "sys_cpustring" ) );
 
 #ifdef USE_AFFINITY_MASK
-	if ( com_affinityMask->integer )
-		Sys_SetAffinityMask( com_affinityMask->integer );
+	// get initial process affinity - we will respect it when setting custom affinity masks
+	eCoreMask = pCoreMask = affinityMask = Sys_GetAffinityMask();
+#if (idx64 || id386)
+	DetectCPUCoresConfig();
+#endif
+	if ( com_affinityMask->string[0] != '\0' ) {
+		Com_SetAffinityMask( com_affinityMask->string );
+		com_affinityMask->modified = qfalse;
+	}
 #endif
 
 	// Pick a random port value
@@ -3782,7 +4018,8 @@ void Com_Init( char *commandLine ) {
 	// set com_frameTime so that if a map is started on the
 	// command line it will still be able to count on com_frameTime
 	// being random enough for a serverid
-	lastTime = com_frameTime = Com_Milliseconds();
+	// lastTime = com_frameTime = Com_Milliseconds();
+	Com_FrameInit();
 
 	if ( !com_errorEntered )
 		Sys_ShowConsole( com_viewlog->integer, qfalse );
@@ -3795,6 +4032,10 @@ void Com_Init( char *commandLine ) {
 	com_fullyInitialized = qtrue;
 
 	Com_Printf( "--- Common Initialization Complete ---\n" );
+
+	NET_Init();
+
+	Com_Printf( "Working directory: %s\n", Sys_Pwd() );
 }
 
 
@@ -3832,7 +4073,7 @@ void Com_WriteConfiguration( void ) {
 	const char *basegame;
 	const char *gamedir;
 #endif
-	// if we are quiting without fully initializing, make sure
+	// if we are quitting without fully initializing, make sure
 	// we don't write out anything
 	if ( !com_fullyInitialized ) {
 		return;
@@ -3846,8 +4087,8 @@ void Com_WriteConfiguration( void ) {
 	Com_WriteConfigToFile( Q3CONFIG_CFG );
 
 #ifndef DEDICATED
-	gamedir = Cvar_VariableString( "fs_game" );
-	basegame = Cvar_VariableString( "fs_basegame" );
+	gamedir = FS_GetCurrentGameDir();
+	basegame = FS_GetBaseGameDir();
 	if ( UI_usesUniqueCDKey() && gamedir[0] && Q_stricmp( basegame, gamedir ) ) {
 		Com_WriteCDKey( gamedir, &cl_cdkey[16] );
 	} else {
@@ -3957,6 +4198,15 @@ static int Com_TimeVal( int minMsec )
 	return timeVal;
 }
 
+/*
+=================
+Com_FrameInit
+=================
+*/
+void Com_FrameInit( void )
+{
+	lastTime = com_frameTime = Com_Milliseconds();
+}
 
 /*
 =================
@@ -4008,9 +4258,8 @@ void Com_Frame( qboolean noDelay ) {
 
 #ifdef USE_AFFINITY_MASK
 	if ( com_affinityMask->modified ) {
-		Cvar_Get( "com_affinityMask", "0", CVAR_ARCHIVE );
+		Com_SetAffinityMask( com_affinityMask->string );
 		com_affinityMask->modified = qfalse;
-		Sys_SetAffinityMask( com_affinityMask->integer );
 	}
 #endif
 
@@ -4142,6 +4391,7 @@ void Com_Frame( qboolean noDelay ) {
 			timeBeforeEvents = Sys_Milliseconds();
 		}
 		Com_EventLoop();
+
 		Cbuf_Execute();
 
 		//
@@ -4159,7 +4409,9 @@ void Com_Frame( qboolean noDelay ) {
 	}
 #endif
 
-	NET_FlushPacketQueue();
+	NET_FlushPacketQueue( 0 );
+
+	Cbuf_Wait();
 
 	//
 	// report timing information
@@ -4310,7 +4562,7 @@ static void PrintCvarMatches( const char *s ) {
 Field_FindFirstSeparator
 ===============
 */
-static char *Field_FindFirstSeparator( char *s )
+static const char *Field_FindFirstSeparator( const char *s )
 {
 	char c;
 	while ( (c = *s) != '\0' ) {
@@ -4499,7 +4751,7 @@ void Field_CompleteFilename( const char *dir, const char *ext, qboolean stripExt
 Field_CompleteCommand
 ===============
 */
-void Field_CompleteCommand( char *cmd, qboolean doCommands, qboolean doCvars )
+void Field_CompleteCommand( const char *cmd, qboolean doCommands, qboolean doCvars )
 {
 	int	completionArgument;
 
@@ -4541,7 +4793,7 @@ void Field_CompleteCommand( char *cmd, qboolean doCommands, qboolean doCvars )
 	if ( completionArgument > 1 )
 	{
 		const char *baseCmd = Cmd_Argv( 0 );
-		char *p;
+		const char *p;
 
 #ifndef DEDICATED
 			// This should always be true
@@ -4632,6 +4884,7 @@ void Com_RandomBytes( byte *string, int len )
 }
 
 
+#if 0
 static qboolean strgtr(const char *s0, const char *s1) {
 	int l0, l1, i;
 
@@ -4652,6 +4905,7 @@ static qboolean strgtr(const char *s0, const char *s1) {
 	}
 	return qfalse;
 }
+#endif
 
 
 /*
@@ -4659,7 +4913,7 @@ static qboolean strgtr(const char *s0, const char *s1) {
 Com_SortList
 ==================
 */
-static void Com_SortList( char **list, int n )
+void Com_SortList( char **list, int n )
 {
 	const char *m;
 	char *temp;
@@ -4691,6 +4945,7 @@ static void Com_SortList( char **list, int n )
 Com_SortFileList
 ==================
 */
+#if 0
 void Com_SortFileList( char **list, int nfiles, int fastSort )
 {
 	if ( nfiles > 1 && fastSort )
@@ -4713,3 +4968,4 @@ void Com_SortFileList( char **list, int nfiles, int fastSort )
 		} while( flag );
 	}
 }
+#endif

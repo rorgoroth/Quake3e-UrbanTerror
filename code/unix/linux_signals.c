@@ -36,7 +36,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 static qboolean signalcaught = qfalse;
 
-extern void Sys_Exit( int code );
+extern void NORETURN Sys_Exit( int code );
 
 static void signal_handler( int sig )
 {
@@ -61,10 +61,12 @@ static void signal_handler( int sig )
 
 	signalcaught = qtrue;
 	sprintf( msg, "Signal caught (%d)", sig );
+	VM_Forced_Unload_Start();
 #ifndef DEDICATED
 	CL_Shutdown( msg, qtrue );
 #endif
 	SV_Shutdown( msg );
+	VM_Forced_Unload_Done();
 	Sys_Exit( 0 ); // send a 0 to avoid DOUBLE SIGNAL FAULT
 }
 

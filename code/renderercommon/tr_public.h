@@ -129,10 +129,10 @@ typedef struct {
 //
 typedef struct {
 	// print message on the local console
-	void	(QDECL *Printf)( printParm_t printLevel, const char *fmt, ... ) __attribute__ ((format (printf, 2, 3)));
+	void	FORMAT_PRINTF(2, 3) (QDECL *Printf)( printParm_t printLevel, const char *fmt, ... );
 
 	// abort the game
-	void	(QDECL *Error)( errorParm_t errorLevel, const char *fmt, ... ) __attribute__ ((noreturn, format (printf, 2, 3)));
+	void	NORETURN_PTR FORMAT_PRINTF(2, 3)(QDECL *Error)( errorParm_t errorLevel, const char *fmt, ... );
 
 	// milliseconds should only be used for profiling, never
 	// for anything game related.  Get time from the refdef
@@ -173,7 +173,7 @@ typedef struct {
 	void	(*Cmd_RemoveCommand)( const char *name );
 
 	int		(*Cmd_Argc) (void);
-	char	*(*Cmd_Argv) (int i);
+	const char	*(*Cmd_Argv) (int i);
 
 	void	(*Cmd_ExecuteText)( cbufExec_t exec_when, const char *text );
 
@@ -212,12 +212,13 @@ typedef struct {
 	int		(*Com_RealTime)( qtime_t *qtime );
 
 	// platform-dependent functions
+	void(*GLimp_InitGamma)(glconfig_t *config);
+	void(*GLimp_SetGamma)(unsigned char red[256], unsigned char green[256], unsigned char blue[256]);
+
+	// OpenGL
 	void	(*GLimp_Init)( glconfig_t *config );
 	void	(*GLimp_Shutdown)( qboolean unloadDLL );
 	void	(*GLimp_EndFrame)( void );
-	void	(*GLimp_InitGamma)( glconfig_t *config );
-	void	(*GLimp_SetGamma)( unsigned char red[256], unsigned char green[256], unsigned char blue[256] );
-
 	void*	(*GL_GetProcAddress)( const char *name );
 
 	// Vulkan

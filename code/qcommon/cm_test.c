@@ -276,7 +276,7 @@ int CM_PointContents( const vec3_t p, clipHandle_t model ) {
 ==================
 CM_TransformedPointContents
 
-Handles offseting and rotation of the end points for moving and
+Handles offsetting and rotation of the end points for moving and
 rotating entities
 ==================
 */
@@ -462,7 +462,7 @@ int CM_WriteAreaBits (byte *buffer, int area)
 #ifndef BSPC
 	if (cm_noAreas->integer || area == -1)
 #else
-	if ( area == -1)
+	if (area == -1)
 #endif
 	{	// for debugging, send everything
 		Com_Memset (buffer, 255, bytes);
@@ -472,7 +472,7 @@ int CM_WriteAreaBits (byte *buffer, int area)
 		floodnum = cm.areas[area].floodnum;
 		for (i=0 ; i<cm.numAreas ; i++)
 		{
-			if (cm.areas[i].floodnum == floodnum || area == -1)
+			if (cm.areas[i].floodnum == floodnum)
 				buffer[i>>3] |= 1<<(i&7);
 		}
 	}
@@ -481,7 +481,7 @@ int CM_WriteAreaBits (byte *buffer, int area)
 }
 
 
-#define BOUNDS_CLIP_EPSILON 0.25f // assume single precision and slightly increase to compensate potential SIMD precison loss in 64-bit environment
+#define BOUNDS_CLIP_EPSILON 0.25f // assume single precision and slightly increase to compensate potential SIMD precision loss in 64-bit environment
 
 /*
 ====================

@@ -139,14 +139,16 @@ static void QuatSlerp(const quat_t from, const quat_t _to, float fraction, quat_
 	out[2] = from[2] * backlerp + to[2] * lerp;
 	out[3] = from[3] * backlerp + to[3] * lerp;
 }
+
+
 static vec_t QuatNormalize2( const quat_t v, quat_t out) {
-	float	length, ilength;
+	float	length;
 
 	length = v[0]*v[0] + v[1]*v[1] + v[2]*v[2] + v[3]*v[3];
 
 	if (length) {
-		/* writing it this way allows gcc to recognize that rsqrt can be used */
-		ilength = 1/(float)sqrt (length);
+		/* writing it this way allows gcc to recognize that rsqrt can be used with -ffast-math */
+		const float ilength = 1.0f / sqrtf( length );
 		/* sqrt(length) = length * (1 / sqrt(length)) */
 		length *= ilength;
 		out[0] = v[0]*ilength;
@@ -965,7 +967,7 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
 R_CullIQM
 =============
 */
-static int R_CullIQM( iqmData_t *data, trRefEntity_t *ent ) {
+static int R_CullIQM( const iqmData_t *data, const trRefEntity_t *ent ) {
 	vec3_t		bounds[2];
 	vec_t		*oldBounds, *newBounds;
 	int		i;
@@ -1006,9 +1008,9 @@ R_ComputeIQMFogNum
 
 =================
 */
-int R_ComputeIQMFogNum( iqmData_t *data, trRefEntity_t *ent ) {
+static int R_ComputeIQMFogNum( const iqmData_t *data, const trRefEntity_t *ent ) {
 	int			i, j;
-	fog_t			*fog;
+	const fog_t			*fog;
 	const vec_t		*bounds;
 	const vec_t		defaultBounds[6] = { -8, -8, -8, 8, 8, 8 };
 	vec3_t			diag, center;
@@ -1063,7 +1065,7 @@ void R_AddIQMSurfaces( trRefEntity_t *ent ) {
 	int			cull;
 	int			fogNum;
 	shader_t		*shader;
-	skin_t			*skin;
+	const skin_t			*skin;
 
 	data = tr.currentModel->modelData;
 	surface = data->surfaces;
@@ -1251,7 +1253,7 @@ RB_AddIQMSurfaces
 Compute vertices for this model surface
 =================
 */
-void RB_IQMSurfaceAnim( surfaceType_t *surface ) {
+void RB_IQMSurfaceAnim( const surfaceType_t *surface ) {
 	srfIQModel_t	*surf = (srfIQModel_t *)surface;
 	iqmData_t	*data = surf->data;
 	float		poseMats[IQM_MAX_JOINTS * 12];

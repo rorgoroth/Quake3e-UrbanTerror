@@ -51,7 +51,7 @@ static void GetClientState( uiClientState_t *state ) {
 LAN_LoadCachedServers
 ====================
 */
-void LAN_LoadCachedServers( void ) {
+static void LAN_LoadCachedServers( void ) {
 	fileHandle_t fileIn;
 	int size, file_size;
 
@@ -87,7 +87,7 @@ void LAN_LoadCachedServers( void ) {
 LAN_SaveServersToCache
 ====================
 */
-void LAN_SaveServersToCache( void ) {
+static void LAN_SaveServersToCache( void ) {
 	fileHandle_t fileOut;
 	int size;
 
@@ -591,7 +591,7 @@ static int LAN_ServerIsVisible(int source, int n ) {
 LAN_UpdateVisiblePings
 =======================
 */
-qboolean LAN_UpdateVisiblePings(int source ) {
+static qboolean LAN_UpdateVisiblePings(int source ) {
 	return CL_UpdateVisiblePings_f(source);
 }
 
@@ -699,11 +699,11 @@ static void CLUI_SetCDKey( char *buf ) {
 	if ( UI_usesUniqueCDKey() && gamedir[0] != '\0' ) {
 		Com_Memcpy( &cl_cdkey[16], buf, 16 );
 		cl_cdkey[32] = '\0';
-		// set the flag so the fle will be written at the next opportunity
+		// set the flag so the flag will be written at the next opportunity
 		cvar_modifiedFlags |= CVAR_ARCHIVE;
 	} else {
 		Com_Memcpy( cl_cdkey, buf, 16 );
-		// set the flag so the fle will be written at the next opportunity
+		// set the flag so the flag will be written at the next opportunity
 		cvar_modifiedFlags |= CVAR_ARCHIVE;
 	}
 }
@@ -774,6 +774,11 @@ static qboolean UI_GetValue( char* value, int valueSize, const char* key ) {
 
 	if ( !Q_stricmp( key, "trap_R_AddLinearLightToScene_Q3E" ) && re.AddLinearLightToScene ) {
 		Com_sprintf( value, valueSize, "%i", UI_R_ADDLINEARLIGHTTOSCENE );
+		return qtrue;
+	}
+
+	if ( !Q_stricmp( key, "trap_Cvar_SetDescription_Q3E" ) ) {
+		Com_sprintf( value, valueSize, "%i", UI_CVAR_SETDESCRIPTION );
 		return qtrue;
 	}
 
@@ -1098,7 +1103,7 @@ static intptr_t CL_UISystemCalls( intptr_t *args ) {
 
 	case TRAP_STRNCPY:
 		VM_CHECKBOUNDS( uivm, args[1], args[3] );
-		strncpy( VMA(1), VMA(2), args[3] );
+		Q_strncpy( VMA(1), VMA(2), args[3] );
 		return args[1];
 
 	case TRAP_SIN:
@@ -1173,6 +1178,10 @@ static intptr_t CL_UISystemCalls( intptr_t *args ) {
 	// engine extensions
 	case UI_R_ADDLINEARLIGHTTOSCENE:
 		re.AddLinearLightToScene( VMA(1), VMA(2), VMF(3), VMF(4), VMF(5), VMF(6) );
+		return 0;
+
+	case UI_CVAR_SETDESCRIPTION:
+		Cvar_SetDescription2( (const char*)VMA(1), (const char*)VMA(2) );
 		return 0;
 
 	case UI_TRAP_GETVALUE:

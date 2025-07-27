@@ -23,9 +23,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "client.h"
 
-static const char *svc_strings[256] = {
+static const char *svc_strings[] = {
 	"svc_bad",
-
 	"svc_nop",
 	"svc_gamestate",
 	"svc_configstring",
@@ -38,7 +37,7 @@ static const char *svc_strings[256] = {
 	"svc_voipOpus",  // ioq3 extension
 };
 
-void SHOWNET( msg_t *msg, const char *s ) {
+static void SHOWNET( msg_t *msg, const char *s ) {
 	if ( cl_shownet->integer >= 2) {
 		Com_Printf ("%3i:%s\n", msg->readcount-1, s);
 	}
@@ -112,14 +111,14 @@ static void CL_ParsePacketEntities( msg_t *msg, const clSnapshot_t *oldframe, cl
 
 	while ( 1 ) {
 		// read the entity index number
-		newnum = MSG_ReadBits( msg, GENTITYNUM_BITS );
+		newnum = MSG_ReadEntitynum( msg );
+
+		if ( newnum < 0 ) {
+			Com_Error( ERR_DROP, "CL_ParsePacketEntities: end of message" );
+		}
 
 		if ( newnum == (MAX_GENTITIES-1) ) {
 			break;
-		}
-
-		if ( msg->readcount > msg->cursize ) {
-			Com_Error (ERR_DROP,"CL_ParsePacketEntities: end of message");
 		}
 
 		while ( oldnum < newnum ) {
@@ -307,7 +306,7 @@ static void CL_ParseSnapshot( msg_t *msg ) {
 	// calculate ping time
 	for ( i = 0 ; i < PACKET_BACKUP ; i++ ) {
 		packetNum = ( clc.netchan.outgoingSequence - 1 - i ) & PACKET_MASK;
-		if ( cl.snap.ps.commandTime >= cl.outPackets[ packetNum ].p_serverTime ) {
+		if ( cl.snap.ps.commandTime - cl.outPackets[packetNum].p_serverTime >= 0 ) {
 			cl.snap.ping = cls.realtime - cl.outPackets[ packetNum ].p_realtime;
 			break;
 		}
@@ -506,6 +505,7 @@ static void CL_ParseGamestate( msg_t *msg ) {
 	int				cmd;
 	const char		*s;
 	char			oldGame[ MAX_QPATH ];
+	char			reconnectArgs[ MAX_CVAR_VALUE_STRING ];
 	qboolean		gamedirModified;
 
 	Con_Close();
@@ -545,14 +545,14 @@ static void CL_ParseGamestate( msg_t *msg ) {
 
 			i = MSG_ReadShort( msg );
 			if ( i < 0 || i >= MAX_CONFIGSTRINGS ) {
-				Com_Error( ERR_DROP, "configstring > MAX_CONFIGSTRINGS" );
+				Com_Error( ERR_DROP, "%s: configstring > MAX_CONFIGSTRINGS", __func__ );
 			}
 
 			s = MSG_ReadBigString( msg );
 			len = strlen( s );
 
 			if ( len + 1 + cl.gameState.dataCount > MAX_GAMESTATE_CHARS ) {
-				Com_Error( ERR_DROP, "MAX_GAMESTATE_CHARS exceeded: %i",
+				Com_Error( ERR_DROP, "%s: MAX_GAMESTATE_CHARS exceeded: %i", __func__,
 					len + 1 + cl.gameState.dataCount );
 			}
 
@@ -561,15 +561,21 @@ static void CL_ParseGamestate( msg_t *msg ) {
 			Com_Memcpy( cl.gameState.stringData + cl.gameState.dataCount, s, len + 1 );
 			cl.gameState.dataCount += len + 1;
 		} else if ( cmd == svc_baseline ) {
-			newnum = MSG_ReadBits( msg, GENTITYNUM_BITS );
-			if ( newnum < 0 || newnum >= MAX_GENTITIES ) {
-				Com_Error( ERR_DROP, "Baseline number out of range: %i", newnum );
+			newnum = MSG_ReadEntitynum( msg );
+
+			if ( newnum < 0 ) {
+				Com_Error( ERR_DROP, "%s: end of message", __func__ );
 			}
+
+			if ( newnum >= MAX_GENTITIES ) {
+				Com_Error( ERR_DROP, "%s: baseline number out of range: %i", __func__, newnum );
+			}
+
 			es = &cl.entityBaselines[ newnum ];
 			MSG_ReadDeltaEntity( msg, &nullstate, es, newnum );
 			cl.baselineUsed[ newnum ] = 1;
 		} else {
-			Com_Error( ERR_DROP, "CL_ParseGamestate: bad command byte" );
+			Com_Error( ERR_DROP, "%s: bad command byte", __func__ );
 		}
 	}
 
@@ -605,13 +611,23 @@ static void CL_ParseGamestate( msg_t *msg ) {
 	// try to keep gamestate and connection state during game switch
 	cls.gameSwitch = gamedirModified;
 
+	// preserve \cl_reconnectAgrs between online game directory changes
+	// so after mod switch \reconnect will not restore old value from config but use new one
+	if ( gamedirModified ) {
+		Cvar_VariableStringBuffer( "cl_reconnectArgs", reconnectArgs, sizeof( reconnectArgs ) );
+	}
+
 	// reinitialize the filesystem if the game directory has changed
 	FS_ConditionalRestart( clc.checksumFeed, gamedirModified );
 
+	// restore \cl_reconnectAgrs
+	if ( gamedirModified ) {
+		Cvar_Set( "cl_reconnectArgs", reconnectArgs );
+	}
+
 	cls.gameSwitch = qfalse;
 
-	// This used to call CL_StartHunkUsers, but now we enter the download state before loading the
-	// cgame
+	// This used to call CL_StartHunkUsers, but now we enter the download state before loading the cgame
 	CL_InitDownloads();
 
 	// make sure the game starts
@@ -737,7 +753,7 @@ static void CL_ParseDownload( msg_t *msg ) {
 	// So UI gets access to it
 	Cvar_SetIntegerValue( "cl_downloadCount", clc.downloadCount );
 
-	if (!size) { // A zero length block means EOF
+	if ( size == 0 ) { // A zero length block means EOF
 		if ( clc.download != FS_INVALID_HANDLE ) {
 			FS_FCloseFile( clc.download );
 			clc.download = FS_INVALID_HANDLE;
@@ -751,8 +767,7 @@ static void CL_ParseDownload( msg_t *msg ) {
 		// loading right away.  If we take a while to load, the server is happily trying
 		// to send us that last block over and over.
 		// Write it twice to help make sure we acknowledge the download
-		CL_WritePacket();
-		CL_WritePacket();
+		CL_WritePacket( 1 );
 
 		// get another file if needed
 		CL_NextDownload();
@@ -780,7 +795,7 @@ static void CL_ParseCommandString( msg_t *msg ) {
 		Com_Printf( " %3i(%3i) %s\n", seq, clc.serverCommandSequence, s );
 
 	// see if we have already executed stored it off
-	if ( clc.serverCommandSequence >= seq ) {
+	if ( clc.serverCommandSequence - seq >= 0 ) {
 		return;
 	}
 	clc.serverCommandSequence = seq;
@@ -848,19 +863,19 @@ void CL_ParseServerMessage( msg_t *msg ) {
 	// parse the message
 	while ( 1 ) {
 		if ( msg->readcount > msg->cursize ) {
-			Com_Error( ERR_DROP,"CL_ParseServerMessage: read past end of server message" );
+			Com_Error( ERR_DROP,"%s: read past end of server message", __func__ );
 			break;
 		}
 
 		cmd = MSG_ReadByte( msg );
 
-		if ( cmd == svc_EOF) {
+		if ( cmd == svc_EOF ) {
 			SHOWNET( msg, "END OF MESSAGE" );
 			break;
 		}
 
 		if ( cl_shownet->integer >= 2 ) {
-			if ( (cmd < 0) || (!svc_strings[cmd]) ) {
+			if ( (unsigned) cmd >= ARRAY_LEN( svc_strings ) ) {
 				Com_Printf( "%3i:BAD CMD %i\n", msg->readcount-1, cmd );
 			} else {
 				SHOWNET( msg, svc_strings[cmd] );
@@ -870,7 +885,7 @@ void CL_ParseServerMessage( msg_t *msg ) {
 		// other commands
 		switch ( cmd ) {
 		default:
-			Com_Error( ERR_DROP,"CL_ParseServerMessage: Illegible server message" );
+			Com_Error( ERR_DROP,"%s: Illegible server message", __func__ );
 			break;
 		case svc_nop:
 			break;
