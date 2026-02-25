@@ -434,7 +434,7 @@ ifdef MINGW
 
   ifeq ($(ARCH),x86_64)
     ARCHEXT = .x64
-    BASE_CFLAGS += -m64
+    BASE_CFLAGS += -m64 -Wno-incompatible-pointer-types
     OPTIMIZE = -O2 -ffast-math
   endif
   ifeq ($(ARCH),x86)
