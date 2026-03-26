@@ -1,0 +1,4873 @@
+From b713543b2b74a5309aec4dbd929af07821594242 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Tue, 17 Mar 2026 20:34:34 +0300
+Subject: [PATCH 01/18] Convert memory allocation functions to use size_t.
+
+This makes memory allocation less susceptible to integer overflow
+errors.
+
+Zone allocator can't return more than 2 GiB per call, but cumulative
+size of all allocations can exceed signed 32-bit integer range if
+USE_MULTI_SEGMENT is enabled. For this reason convert zone statistics to
+use size_t as well.
+
+Hunk allocator continues to use signed 32-bit integers internally
+because total hunk size is limited to 2 GiB.
+
+Check upper bound of com_zoneMegs/com_hunkMegs cvars to prevent integer
+overflows.
+---
+ code/botlib/botlib.h            |   4 +-
+ code/client/cl_main.c           |   2 +-
+ code/qcommon/common.c           | 118 ++++++++++++++++++--------------
+ code/qcommon/q_platform.h       |  12 ++++
+ code/qcommon/q_shared.h         |   4 +-
+ code/qcommon/qcommon.h          |  14 ++--
+ code/renderercommon/tr_public.h |   8 +--
+ code/server/sv_bot.c            |   4 +-
+ 8 files changed, 95 insertions(+), 71 deletions(-)
+
+diff --git a/code/botlib/botlib.h b/code/botlib/botlib.h
+index f74143ba15..60c6ed7dc3 100644
+--- a/code/botlib/botlib.h
++++ b/code/botlib/botlib.h
+@@ -186,10 +186,10 @@ typedef struct botlib_import_s
+ 	//send a bot client command
+ 	void		(*BotClientCommand)( int client, const char *command );
+ 	//memory allocation
+-	void		*(*GetMemory)(int size);		// allocate from Zone
++	void		*(*GetMemory)(size_t size);		// allocate from Zone
+ 	void		(*FreeMemory)(void *ptr);		// free memory from Zone
+ 	int			(*AvailableMemory)(void);		// available Zone memory
+-	void		*(*HunkAlloc)(int size);		// allocate from hunk
++	void		*(*HunkAlloc)(size_t size);		// allocate from hunk
+ 	//file system access
+ 	int			(*FS_FOpenFile)( const char *qpath, fileHandle_t *file, fsMode_t mode );
+ 	int			(*FS_Read)( void *buffer, int len, fileHandle_t f );
+diff --git a/code/client/cl_main.c b/code/client/cl_main.c
+index 90bfda7811..01ab8e2f30 100644
+--- a/code/client/cl_main.c
++++ b/code/client/cl_main.c
+@@ -3291,7 +3291,7 @@ void CL_StartHunkUsers( void ) {
+ CL_RefMalloc
+ ============
+ */
+-static void *CL_RefMalloc( int size ) {
++static void *CL_RefMalloc( size_t size ) {
+ 	return Z_TagMalloc( size, TAG_RENDERER );
+ }
+ 
+diff --git a/code/qcommon/common.c b/code/qcommon/common.c
+index d5d6a90c66..42ef67d57a 100644
+--- a/code/qcommon/common.c
++++ b/code/qcommon/common.c
+@@ -988,7 +988,7 @@ typedef struct zonedebug_s {
+ 
+ typedef struct memblock_s {
+ 	struct memblock_s	*next, *prev;
+-	int			size;	// including the header and possibly tiny fragments
++	size_t		size;	// including the header and possibly tiny fragments
+ 	memtag_t	tag;	// a tag of 0 is a free block
+ 	int			id;		// should be ZONEID
+ #ifdef ZONE_DEBUG
+@@ -1002,8 +1002,8 @@ typedef struct freeblock_s {
+ } freeblock_t;
+ 
+ typedef struct memzone_s {
+-	int		size;			// total bytes malloced, including header
+-	int		used;			// total bytes used
++	size_t		size;		// total bytes malloced, including header
++	size_t		used;		// total bytes used
+ 	memblock_t	blocklist;	// start / end cap for linked list
+ #ifdef USE_MULTI_SEGMENT
+ 	memblock_t	dummy0;		// just to allocate some space before freelist
+@@ -1105,11 +1105,11 @@ Separator is needed to avoid additional runtime checks in Z_Free()
+ to prevent merging it with previous free block
+ ================
+ */
+-static freeblock_t *NewBlock( memzone_t *zone, int size )
++static freeblock_t *NewBlock( memzone_t *zone, size_t size )
+ {
+ 	memblock_t *prev, *next;
+ 	memblock_t *block, *sep;
+-	int alloc_size;
++	size_t alloc_size;
+ 
+ 	// zone->prev is pointing on last block in the list
+ 	prev = zone->blocklist.prev;
+@@ -1121,7 +1121,7 @@ static freeblock_t *NewBlock( memzone_t *zone, int size )
+ 
+ 	sep = (memblock_t *) calloc( alloc_size, 1 );
+ 	if ( sep == NULL ) {
+-		Com_Error( ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone",
++		Com_Error( ERR_FATAL, "Z_Malloc: failed on allocation of %"PRIz"u bytes from the %s zone",
+ 			size, zone == smallzone ? "small" : "main" );
+ 		return NULL;
+ 	}
+@@ -1157,7 +1157,7 @@ static freeblock_t *NewBlock( memzone_t *zone, int size )
+ }
+ 
+ 
+-static memblock_t *SearchFree( memzone_t *zone, int size )
++static memblock_t *SearchFree( memzone_t *zone, size_t size )
+ {
+ 	const freeblock_t *fb;
+ 	memblock_t *base;
+@@ -1219,7 +1219,7 @@ static memblock_t *SearchFree( memzone_t *zone, int size )
+ Z_ClearZone
+ ========================
+ */
+-static void Z_ClearZone( memzone_t *zone, memzone_t *head, int size, int segnum ) {
++static void Z_ClearZone( memzone_t *zone, memzone_t *head, size_t size, int segnum ) {
+ 	memblock_t	*block;
+ 	int min_fragment;
+ 
+@@ -1433,18 +1433,22 @@ Z_TagMalloc
+ ================
+ */
+ #ifdef ZONE_DEBUG
+-void *Z_TagMallocDebug( int size, memtag_t tag, char *label, char *file, int line ) {
++void *Z_TagMallocDebug( size_t size, memtag_t tag, const char *label, const char *file, int line ) {
+ 	int		allocSize;
+ #else
+-void *Z_TagMalloc( int size, memtag_t tag ) {
++void *Z_TagMalloc( size_t size, memtag_t tag ) {
+ #endif
+-	int		extra;
++	size_t		extra;
+ #ifndef USE_MULTI_SEGMENT
+ 	memblock_t	*start, *rover;
+ #endif
+ 	memblock_t *base;
+ 	memzone_t *zone;
+ 
++	if ( size > INT_MAX ) {
++		Com_Error( ERR_FATAL, "Z_TagMalloc: %"PRIz"u > INT_MAX", size );
++	}
++
+ 	if ( tag == TAG_FREE ) {
+ 		Com_Error( ERR_FATAL, "Z_TagMalloc: tried to use with TAG_FREE" );
+ 	}
+@@ -1490,10 +1494,10 @@ void *Z_TagMalloc( int size, memtag_t tag ) {
+ 			// scanned all the way around the list
+ #ifdef ZONE_DEBUG
+ 			Z_LogHeap();
+-			Com_Error( ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone: %s, line: %d (%s)",
++			Com_Error( ERR_FATAL, "Z_Malloc: failed on allocation of %"PRIz"u bytes from the %s zone: %s, line: %d (%s)",
+ 								size, zone == smallzone ? "small" : "main", file, line, label );
+ #else
+-			Com_Error( ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone",
++			Com_Error( ERR_FATAL, "Z_Malloc: failed on allocation of %"PRIz"u bytes from the %s zone",
+ 								size, zone == smallzone ? "small" : "main" );
+ #endif
+ 			return NULL;
+@@ -1557,9 +1561,9 @@ Z_Malloc
+ ========================
+ */
+ #ifdef ZONE_DEBUG
+-void *Z_MallocDebug( int size, char *label, char *file, int line ) {
++void *Z_MallocDebug( size_t size, const char *label, const char *file, int line ) {
+ #else
+-void *Z_Malloc( int size ) {
++void *Z_Malloc( size_t size ) {
+ #endif
+ 	void	*buf;
+ 
+@@ -1582,11 +1586,11 @@ S_Malloc
+ ========================
+ */
+ #ifdef ZONE_DEBUG
+-void *S_MallocDebug( int size, char *label, char *file, int line ) {
++void *S_MallocDebug( size_t size, const char *label, const char *file, int line ) {
+ 	return Z_TagMallocDebug( size, TAG_SMALL, label, file, line );
+ }
+ #else
+-void *S_Malloc( int size ) {
++void *S_Malloc( size_t size ) {
+ 	return Z_TagMalloc( size, TAG_SMALL );
+ }
+ #endif
+@@ -1638,7 +1642,7 @@ static void Z_LogZoneHeap( memzone_t *zone, const char *name ) {
+ #endif
+ 	memblock_t	*block;
+ 	char		buf[4096];
+-	int size, allocSize, numBlocks;
++	size_t size, allocSize, numBlocks;
+ 	int len;
+ 
+ 	if ( logfile == FS_INVALID_HANDLE || !FS_Initialized() )
+@@ -1682,9 +1686,9 @@ static void Z_LogZoneHeap( memzone_t *zone, const char *name ) {
+ #else
+ 	allocSize = numBlocks * sizeof(memblock_t); // + 32 bit alignment
+ #endif
+-	len = Com_sprintf( buf, sizeof( buf ), "%d %s memory in %d blocks\r\n", size, name, numBlocks );
++	len = Com_sprintf( buf, sizeof( buf ), "%"PRIz"u %s memory in %"PRIz"u blocks\r\n", size, name, numBlocks );
+ 	FS_Write( buf, len, logfile );
+-	len = Com_sprintf( buf, sizeof( buf ), "%d %s memory overhead\r\n", size - allocSize, name );
++	len = Com_sprintf( buf, sizeof( buf ), "%"PRIz"u %s memory overhead\r\n", size - allocSize, name );
+ 	FS_Write( buf, len, logfile );
+ 	FS_Flush( logfile );
+ }
+@@ -1833,15 +1837,15 @@ static const char *tagName[ TAG_COUNT ] = {
+ };
+ 
+ typedef struct zone_stats_s {
+-	int	zoneSegments;
+-	int zoneBlocks;
+-	int	zoneBytes;
+-	int	botlibBytes;
+-	int	rendererBytes;
+-	int freeBytes;
+-	int freeBlocks;
+-	int freeSmallest;
+-	int freeLargest;
++	size_t zoneSegments;
++	size_t zoneBlocks;
++	size_t zoneBytes;
++	size_t botlibBytes;
++	size_t rendererBytes;
++	size_t freeBytes;
++	size_t freeBlocks;
++	size_t freeSmallest;
++	size_t freeLargest;
+ } zone_stats_t;
+ 
+ 
+@@ -1854,7 +1858,7 @@ static void Zone_Stats( const char *name, const memzone_t *z, qboolean printDeta
+ 	memset( &st, 0, sizeof( st ) );
+ 	zone = z;
+ 	st.zoneSegments = 1;
+-	st.freeSmallest = 0x7FFFFFFF;
++	st.freeSmallest = SIZE_MAX;
+ 
+ 	//if ( printDetails ) {
+ 	//	Com_Printf( "---------- %s zone segment #%i ----------\n", name, zone->segnum );
+@@ -1863,7 +1867,7 @@ static void Zone_Stats( const char *name, const memzone_t *z, qboolean printDeta
+ 	for ( block = zone->blocklist.next ; ; ) {
+ 		if ( printDetails ) {
+ 			int tag = block->tag;
+-			Com_Printf( "block:%p  size:%8i  tag: %s\n", (void *)block, block->size,
++			Com_Printf( "block:%p  size:%8"PRIz"u  tag: %s\n", (void *)block, block->size,
+ 				(unsigned)tag < TAG_COUNT ? tagName[ tag ] : va( "%i", tag ) );
+ 		}
+ 		if ( block->tag != TAG_FREE ) {
+@@ -1891,7 +1895,7 @@ static void Zone_Stats( const char *name, const memzone_t *z, qboolean printDeta
+ 			if ( next->size == 0 && next->id == -ZONEID && next->tag == TAG_GENERAL ) {
+ 				st.zoneSegments++;
+ 				if ( printDetails ) {
+-					Com_Printf( "---------- %s zone segment #%i ----------\n", name, st.zoneSegments );
++					Com_Printf( "---------- %s zone segment #%"PRIz"u ----------\n", name, st.zoneSegments );
+ 				}
+ 				block = next->next;
+ 				continue;
+@@ -1952,24 +1956,24 @@ static void Com_Meminfo_f( void ) {
+ 	Com_Printf( "\n" );
+ 
+ 	Zone_Stats( "main", mainzone, !Q_stricmp( Cmd_Argv(1), "main" ) || !Q_stricmp( Cmd_Argv(1), "all" ), &st );
+-	Com_Printf( "%8i bytes total main zone\n\n", mainzone->size );
+-	Com_Printf( "%8i bytes in %i main zone blocks%s\n", st.zoneBytes, st.zoneBlocks,
+-		st.zoneSegments > 1 ? va( " and %i segments", st.zoneSegments ) : "" );
+-	Com_Printf( "        %8i bytes in botlib\n", st.botlibBytes );
+-	Com_Printf( "        %8i bytes in renderer\n", st.rendererBytes );
+-	Com_Printf( "        %8i bytes in other\n", st.zoneBytes - ( st.botlibBytes + st.rendererBytes ) );
+-	Com_Printf( "        %8i bytes in %i free blocks\n", st.freeBytes, st.freeBlocks );
++	Com_Printf( "%8"PRIz"u bytes total main zone\n\n", mainzone->size );
++	Com_Printf( "%8"PRIz"u bytes in %"PRIz"u main zone blocks%s\n", st.zoneBytes, st.zoneBlocks,
++		st.zoneSegments > 1 ? va( " and %"PRIz"u segments", st.zoneSegments ) : "" );
++	Com_Printf( "        %8"PRIz"u bytes in botlib\n", st.botlibBytes );
++	Com_Printf( "        %8"PRIz"u bytes in renderer\n", st.rendererBytes );
++	Com_Printf( "        %8"PRIz"u bytes in other\n", st.zoneBytes - ( st.botlibBytes + st.rendererBytes ) );
++	Com_Printf( "        %8"PRIz"u bytes in %"PRIz"u free blocks\n", st.freeBytes, st.freeBlocks );
+ 	if ( st.freeBlocks > 1 ) {
+-		Com_Printf( "        (largest: %i bytes, smallest: %i bytes)\n\n", st.freeLargest, st.freeSmallest );
++		Com_Printf( "        (largest: %"PRIz"u bytes, smallest: %"PRIz"u bytes)\n\n", st.freeLargest, st.freeSmallest );
+ 	}
+ 
+ 	Zone_Stats( "small", smallzone, !Q_stricmp( Cmd_Argv(1), "small" ) || !Q_stricmp( Cmd_Argv(1), "all" ), &st );
+-	Com_Printf( "%8i bytes total small zone\n\n", smallzone->size );
+-	Com_Printf( "%8i bytes in %i small zone blocks%s\n", st.zoneBytes, st.zoneBlocks,
+-		st.zoneSegments > 1 ? va( " and %i segments", st.zoneSegments ) : "" );
+-	Com_Printf( "        %8i bytes in %i free blocks\n", st.freeBytes, st.freeBlocks );
++	Com_Printf( "%8"PRIz"u bytes total small zone\n\n", smallzone->size );
++	Com_Printf( "%8"PRIz"u bytes in %"PRIz"u small zone blocks%s\n", st.zoneBytes, st.zoneBlocks,
++		st.zoneSegments > 1 ? va( " and %"PRIz"u segments", st.zoneSegments ) : "" );
++	Com_Printf( "        %8"PRIz"u bytes in %"PRIz"u free blocks\n", st.freeBytes, st.freeBlocks );
+ 	if ( st.freeBlocks > 1 ) {
+-		Com_Printf( "        (largest: %i bytes, smallest: %i bytes)\n\n", st.freeLargest, st.freeSmallest );
++		Com_Printf( "        (largest: %"PRIz"u bytes, smallest: %"PRIz"u bytes)\n\n", st.freeLargest, st.freeSmallest );
+ 	}
+ }
+ 
+@@ -2059,7 +2063,7 @@ static void Com_InitZoneMemory( void ) {
+ 
+ 	// allocate the random block zone
+ 	cv = Cvar_Get( "com_zoneMegs", XSTRING( DEF_COMZONEMEGS ), CVAR_LATCH | CVAR_ARCHIVE );
+-	Cvar_CheckRange( cv, "1", NULL, CV_INTEGER );
++	Cvar_CheckRange( cv, "1", va("%d", INT_MAX / (1024*1024)), CV_INTEGER );
+ 	Cvar_SetDescription( cv, "Initial amount of memory (RAM) allocated for the main block zone (in MB)." );
+ 
+ #ifndef USE_MULTI_SEGMENT
+@@ -2177,7 +2181,7 @@ static void Com_InitHunkMemory( void ) {
+ 
+ 	// allocate the stack based hunk allocator
+ 	cv = Cvar_Get( "com_hunkMegs", XSTRING( DEF_COMHUNKMEGS ), CVAR_LATCH | CVAR_ARCHIVE );
+-	Cvar_CheckRange( cv, XSTRING( MIN_COMHUNKMEGS ), NULL, CV_INTEGER );
++	Cvar_CheckRange( cv, XSTRING( MIN_COMHUNKMEGS ), va("%d", (INT_MAX-63) / (1024*1024)), CV_INTEGER );
+ 	Cvar_SetDescription( cv, "The size of the hunk memory segment." );
+ 
+ 	s_hunkTotal = cv->integer * 1024 * 1024;
+@@ -2324,9 +2328,9 @@ Allocate permanent (until the hunk is cleared) memory
+ =================
+ */
+ #ifdef HUNK_DEBUG
+-void *Hunk_AllocDebug( int size, ha_pref preference, char *label, char *file, int line ) {
++void *Hunk_AllocDebug( size_t size, ha_pref preference, const char *label, const char *file, int line ) {
+ #else
+-void *Hunk_Alloc( int size, ha_pref preference ) {
++void *Hunk_Alloc( size_t size, ha_pref preference ) {
+ #endif
+ 	void	*buf;
+ 
+@@ -2335,6 +2339,10 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
+ 		Com_Error( ERR_FATAL, "Hunk_Alloc: Hunk memory system not initialized" );
+ 	}
+ 
++	if ( size > INT_MAX ) {
++		Com_Error( ERR_FATAL, "Hunk_Alloc: %"PRIz"u > INT_MAX", size );
++	}
++
+ 	// can't do preference if there is any temp allocated
+ 	if (preference == h_dontcare || hunk_temp->temp != hunk_temp->permanent) {
+ 		Hunk_SwapBanks();
+@@ -2358,9 +2366,9 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
+ 		Hunk_Log();
+ 		Hunk_SmallLog();
+ 
+-		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i: %s, line: %d (%s)", size, file, line, label);
++		Com_Error(ERR_DROP, "Hunk_Alloc failed on %"PRIz"u: %s, line: %d (%s)", size, file, line, label);
+ #else
+-		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i", size);
++		Com_Error(ERR_DROP, "Hunk_Alloc failed on %"PRIz"u", size);
+ #endif
+ 	}
+ 
+@@ -2403,7 +2411,7 @@ Multiple files can be loaded in temporary memory.
+ When the files-in-use count reaches zero, all temp memory will be deleted
+ =================
+ */
+-void *Hunk_AllocateTempMemory( int size ) {
++void *Hunk_AllocateTempMemory( size_t size ) {
+ 	void		*buf;
+ 	hunkHeader_t	*hdr;
+ 
+@@ -2416,12 +2424,16 @@ void *Hunk_AllocateTempMemory( int size ) {
+ 		return Z_Malloc(size);
+ 	}
+ 
++	if ( size > INT_MAX ) {
++		Com_Error( ERR_FATAL, "Hunk_AllocateTempMemory: %"PRIz"u > INT_MAX", size );
++	}
++
+ 	Hunk_SwapBanks();
+ 
+ 	size = PAD(size, sizeof(intptr_t)) + sizeof( hunkHeader_t );
+ 
+ 	if ( hunk_temp->temp + hunk_permanent->permanent + size > s_hunkTotal ) {
+-		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %i", size );
++		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %"PRIz"u", size );
+ 	}
+ 
+ 	if ( hunk_temp == &hunk_low ) {
+diff --git a/code/qcommon/q_platform.h b/code/qcommon/q_platform.h
+index 42bd1c4fa7..b9bbccf2eb 100644
+--- a/code/qcommon/q_platform.h
++++ b/code/qcommon/q_platform.h
+@@ -288,4 +288,16 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ #endif
+ #endif // idx64
+ 
++// Modifier for printing size_t values portably
++
++#if (defined _WIN64)
++#define PRIz "I64"
++#elif (defined _WIN32)
++#define PRIz "I32"
++#elif (defined Q3_VM)
++#define PRIz ""
++#else
++#define PRIz "z"
++#endif
++
+ #endif // __Q_PLATFORM_H
+diff --git a/code/qcommon/q_shared.h b/code/qcommon/q_shared.h
+index 391fcdd5bc..6014b35232 100644
+--- a/code/qcommon/q_shared.h
++++ b/code/qcommon/q_shared.h
+@@ -365,9 +365,9 @@ typedef enum {
+ 
+ #ifdef HUNK_DEBUG
+ #define Hunk_Alloc( size, preference )				Hunk_AllocDebug(size, preference, #size, __FILE__, __LINE__)
+-void *Hunk_AllocDebug( int size, ha_pref preference, char *label, char *file, int line );
++void *Hunk_AllocDebug( size_t size, ha_pref preference, const char *label, const char *file, int line );
+ #else
+-void *Hunk_Alloc( int size, ha_pref preference );
++void *Hunk_Alloc( size_t size, ha_pref preference );
+ #endif
+ 
+ #if defined(__GNUC__) && !defined(__MINGW32__) && !defined(MACOS_X)
+diff --git a/code/qcommon/qcommon.h b/code/qcommon/qcommon.h
+index 3105af8d84..e1ee786f66 100644
+--- a/code/qcommon/qcommon.h
++++ b/code/qcommon/qcommon.h
+@@ -1101,13 +1101,13 @@ temp file loading
+ #define Z_TagMalloc(size, tag)			Z_TagMallocDebug(size, tag, #size, __FILE__, __LINE__)
+ #define Z_Malloc(size)					Z_MallocDebug(size, #size, __FILE__, __LINE__)
+ #define S_Malloc(size)					S_MallocDebug(size, #size, __FILE__, __LINE__)
+-void *Z_TagMallocDebug( int size, memtag_t tag, char *label, char *file, int line );	// NOT 0 filled memory
+-void *Z_MallocDebug( int size, char *label, char *file, int line );			// returns 0 filled memory
+-void *S_MallocDebug( int size, char *label, char *file, int line );			// returns 0 filled memory
++void *Z_TagMallocDebug( size_t size, memtag_t tag, const char *label, const char *file, int line );	// NOT 0 filled memory
++void *Z_MallocDebug( size_t size, const char *label, const char *file, int line );			// returns 0 filled memory
++void *S_MallocDebug( size_t size, const char *label, const char *file, int line );			// returns 0 filled memory
+ #else
+-void *Z_TagMalloc( int size, memtag_t tag );	// NOT 0 filled memory
+-void *Z_Malloc( int size );			// returns 0 filled memory
+-void *S_Malloc( int size );			// NOT 0 filled memory only for small allocations
++void *Z_TagMalloc( size_t size, memtag_t tag );	// NOT 0 filled memory
++void *Z_Malloc( size_t size );			// returns 0 filled memory
++void *S_Malloc( size_t size );			// NOT 0 filled memory only for small allocations
+ #endif
+ void Z_Free( void *ptr );
+ int Z_FreeTags( memtag_t tag );
+@@ -1119,7 +1119,7 @@ void Hunk_ClearToMark( void );
+ void Hunk_SetMark( void );
+ qboolean Hunk_CheckMark( void );
+ void Hunk_ClearTempMemory( void );
+-void *Hunk_AllocateTempMemory( int size );
++void *Hunk_AllocateTempMemory( size_t size );
+ void Hunk_FreeTempMemory( void *buf );
+ int	Hunk_MemoryRemaining( void );
+ void Hunk_Log( void);
+diff --git a/code/renderercommon/tr_public.h b/code/renderercommon/tr_public.h
+index 945a8e043d..0218d35ddd 100644
+--- a/code/renderercommon/tr_public.h
++++ b/code/renderercommon/tr_public.h
+@@ -143,15 +143,15 @@ typedef struct {
+ 	// stack based memory allocation for per-level things that
+ 	// won't be freed
+ #ifdef HUNK_DEBUG
+-	void	*(*Hunk_AllocDebug)( int size, ha_pref pref, char *label, char *file, int line );
++	void	*(*Hunk_AllocDebug)( size_t size, ha_pref pref, const char *label, const char *file, int line );
+ #else
+-	void	*(*Hunk_Alloc)( int size, ha_pref pref );
++	void	*(*Hunk_Alloc)( size_t size, ha_pref pref );
+ #endif
+-	void	*(*Hunk_AllocateTempMemory)( int size );
++	void	*(*Hunk_AllocateTempMemory)( size_t size );
+ 	void	(*Hunk_FreeTempMemory)( void *block );
+ 
+ 	// dynamic memory allocator for things that need to be freed
+-	void	*(*Malloc)( int bytes );
++	void	*(*Malloc)( size_t bytes );
+ 	void	(*Free)( void *buf );
+ 	void	(*FreeAll)( void );
+ 
+diff --git a/code/server/sv_bot.c b/code/server/sv_bot.c
+index 435f0bc9b2..11115e7d1d 100644
+--- a/code/server/sv_bot.c
++++ b/code/server/sv_bot.c
+@@ -290,7 +290,7 @@ static void BotImport_BSPModelMinsMaxsOrigin(int modelnum, vec3_t angles, vec3_t
+ BotImport_GetMemory
+ ==================
+ */
+-static void *BotImport_GetMemory(int size) {
++static void *BotImport_GetMemory(size_t size) {
+ 	void *ptr;
+ 
+ 	ptr = Z_TagMalloc( size, TAG_BOTLIB );
+@@ -311,7 +311,7 @@ static void BotImport_FreeMemory(void *ptr) {
+ BotImport_HunkAlloc
+ =================
+ */
+-static void *BotImport_HunkAlloc( int size ) {
++static void *BotImport_HunkAlloc( size_t size ) {
+ 	if( Hunk_CheckMark() ) {
+ 		Com_Error( ERR_DROP, "%s(): Alloc with marks already set", __func__ );
+ 	}
+
+From 4f7ed6bb5d03bd8db736aed61922db02e8e0f92c Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Tue, 17 Mar 2026 21:20:40 +0300
+Subject: [PATCH 02/18] Clean up botlib memory allocation code.
+
+Consistently use size_t for allocation amount. Check for integer
+overflows. Fix padding of botlib allocations on LLP64 platforms.
+---
+ code/botlib/be_aas_route.c |   9 +--
+ code/botlib/be_ai_chat.c   |  20 +++---
+ code/botlib/l_memory.c     | 127 +++++++++++++++++++------------------
+ code/botlib/l_memory.h     |  16 ++---
+ 4 files changed, 88 insertions(+), 84 deletions(-)
+
+diff --git a/code/botlib/be_aas_route.c b/code/botlib/be_aas_route.c
+index cacde69e49..44cd405be4 100644
+--- a/code/botlib/be_aas_route.c
++++ b/code/botlib/be_aas_route.c
+@@ -499,7 +499,8 @@ unsigned short int AAS_AreaTravelTime(int areanum, vec3_t start, vec3_t end)
+ //===========================================================================
+ static void AAS_CalculateAreaTravelTimes(void)
+ {
+-	int i, l, n, size;
++	int i, l, n;
++	size_t size;
+ 	char *ptr;
+ 	vec3_t end;
+ 	const aas_reversedreachability_t *revreach;
+@@ -524,7 +525,7 @@ static void AAS_CalculateAreaTravelTimes(void)
+ 		size += settings->numreachableareas * sizeof(unsigned short *);
+ 		//
+ 		size += settings->numreachableareas *
+-			PAD(revreach->numlinks, sizeof(long)) * sizeof(unsigned short);
++			PAD(revreach->numlinks * sizeof(unsigned short), sizeof(uintptr_t));
+ 	} //end for
+ 	//allocate memory for the area travel times
+ 	ptr = (char *) GetClearedMemory(size);
+@@ -544,7 +545,7 @@ static void AAS_CalculateAreaTravelTimes(void)
+ 		for (l = 0; l < settings->numreachableareas; l++)
+ 		{
+ 			aasworld.areatraveltimes[i][l] = (unsigned short *) ptr;
+-			ptr += PAD(revreach->numlinks, sizeof(long)) * sizeof(unsigned short);
++			ptr += PAD(revreach->numlinks * sizeof(unsigned short), sizeof(uintptr_t));
+ 			//reachability link
+ 			reach = &aasworld.reachability[settings->firstreachablearea + l];
+ 			//
+@@ -737,7 +738,7 @@ static int AAS_FreeOldestCache(void)
+ static aas_routingcache_t *AAS_AllocRoutingCache(int numtraveltimes)
+ {
+ 	aas_routingcache_t *cache;
+-	int size;
++	size_t size;
+ 
+ 	//
+ 	size = sizeof(aas_routingcache_t)
+diff --git a/code/botlib/be_ai_chat.c b/code/botlib/be_ai_chat.c
+index 79c3911218..5370afb2a7 100644
+--- a/code/botlib/be_ai_chat.c
++++ b/code/botlib/be_ai_chat.c
+@@ -621,9 +621,10 @@ static void BotDumpSynonymList(bot_synonymlist_t *synlist)
+ //===========================================================================
+ static bot_synonymlist_t *BotLoadSynonyms( const char *filename )
+ {
+-	int pass, size, contextlevel, numsynonyms;
++	int pass, contextlevel, numsynonyms;
+ 	unsigned long int context, contextstack[32];
+ 	char *ptr = NULL;
++	size_t size;
+ 	source_t *source;
+ 	token_t token;
+ 	bot_synonymlist_t *synlist, *lastsyn, *syn;
+@@ -710,14 +711,14 @@ static bot_synonymlist_t *BotLoadSynonyms( const char *filename )
+ 							return NULL;
+ 						} //end if
+ 						StripDoubleQuotes(token.string);
+-						len = (int)strlen(token.string);
++						len = strlen(token.string);
+ 						if (len==0)
+ 						{
+ 							SourceError(source, "empty string");
+ 							FreeSource(source);
+ 							return NULL;
+ 						} //end if
+-						len = PAD(len+1, sizeof(long));
++						len = PAD(len+1, sizeof(uintptr_t));
+ 						size += sizeof(bot_synonym_t) + len;
+ 						if (pass && ptr)
+ 						{
+@@ -1018,13 +1019,13 @@ static void BotDumpRandomStringList(bot_randomlist_t *randomlist)
+ //===========================================================================
+ static bot_randomlist_t *BotLoadRandomStrings( const char *filename )
+ {
+-	int pass, size;
++	int pass;
+ 	char *ptr = NULL, chatmessagestring[MAX_MESSAGE_SIZE];
+ 	source_t *source;
+ 	token_t token;
+ 	bot_randomlist_t *randomlist, *lastrandom, *random;
+ 	bot_randomstring_t *randomstring;
+-	size_t len;
++	size_t size, len;
+ 
+ #ifdef DEBUG
+ 	int starttime = Sys_MilliSeconds();
+@@ -1059,7 +1060,7 @@ static bot_randomlist_t *BotLoadRandomStrings( const char *filename )
+ 				return NULL;
+ 			} //end if
+ 			len = strlen(token.string) + 1;
+-			len = PAD(len, sizeof(long));
++			len = PAD(len, sizeof(uintptr_t));
+ 			size += sizeof(bot_randomlist_t) + len;
+ 			if (pass && ptr)
+ 			{
+@@ -1089,7 +1090,7 @@ static bot_randomlist_t *BotLoadRandomStrings( const char *filename )
+ 					return NULL;
+ 				} //end if
+ 				len = strlen(chatmessagestring) + 1;
+-				len = PAD(len, sizeof(long));
++				len = PAD(len, sizeof(uintptr_t));
+ 				size += sizeof(bot_randomstring_t) + len;
+ 				if (pass && ptr)
+ 				{
+@@ -2097,7 +2098,8 @@ static void BotDumpInitialChat(bot_chat_t *chat)
+ //===========================================================================
+ static bot_chat_t *BotLoadInitialChat(const char *chatfile, const char *chatname)
+ {
+-	int pass, foundchat, indent, size;
++	int pass, foundchat, indent;
++	size_t size;
+ 	char *ptr = NULL;
+ 	char chatmessagestring[MAX_MESSAGE_SIZE];
+ 	source_t *source;
+@@ -2199,7 +2201,7 @@ static bot_chat_t *BotLoadInitialChat(const char *chatfile, const char *chatname
+ 								return NULL;
+ 							} //end if
+ 							len = strlen(chatmessagestring) + 1;
+-							len = PAD(len, sizeof(long));
++							len = PAD(len, sizeof(uintptr_t));
+ 							if (pass && ptr)
+ 							{
+ 								chatmessage = (bot_chatmessage_t *) ptr;
+diff --git a/code/botlib/l_memory.c b/code/botlib/l_memory.c
+index d0c493b843..b759e51f63 100644
+--- a/code/botlib/l_memory.c
++++ b/code/botlib/l_memory.c
+@@ -38,23 +38,23 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ //#define MEMDEBUG
+ //#define MEMORYMANAGER
+ 
+-#define MEM_ID		0x12345678l
+-#define HUNK_ID		0x87654321l
++#define MEM_ID		0x12345678
++#define HUNK_ID		0x87654321
+ 
+ #ifdef MEMORYMANAGER
+ 
+-static int allocatedmemory;
+-static int totalmemorysize;
+-static int numblocks;
++static size_t allocatedmemory;
++static size_t totalmemorysize;
++static size_t numblocks;
+ 
+ typedef struct memoryblock_s
+ {
+-	unsigned long int id;
++	uintptr_t id;
+ 	void *ptr;
+-	int size;
++	size_t size;
+ #ifdef MEMDEBUG
+-	char *label;
+-	char *file;
++	const char *label;
++	const char *file;
+ 	int line;
+ #endif //MEMDEBUG
+ 	struct memoryblock_s *prev, *next;
+@@ -94,19 +94,20 @@ static void UnlinkMemoryBlock(memoryblock_t *block)
+ // Changes Globals:		-
+ //===========================================================================
+ #ifdef MEMDEBUG
+-void *GetMemoryDebug(unsigned long size, char *label, char *file, int line)
++void *GetMemoryDebug(size_t size, const char *label, const char *file, int line)
+ #else
+-void *GetMemory(unsigned long size)
++void *GetMemory(size_t size)
+ #endif //MEMDEBUG
+ {
+-	void *ptr;
+ 	memoryblock_t *block;
+-	assert(botimport.GetMemory);
+-	ptr = botimport.GetMemory(size + sizeof(memoryblock_t));
+-	block = (memoryblock_t *) ptr;
++
++	if (size > SIZE_MAX - sizeof(memoryblock_t))
++		botimport.Print(PRT_EXIT, "%s: bad size", __func__);
++
++	block = botimport.GetMemory(size + sizeof(memoryblock_t));
+ 	block->id = MEM_ID;
+-	block->ptr = (char *) ptr + sizeof(memoryblock_t);
+-	block->size = size + sizeof(memoryblock_t);
++	block->ptr = block + 1;
++	block->size = size;
+ #ifdef MEMDEBUG
+ 	block->label = label;
+ 	block->file = file;
+@@ -125,9 +126,9 @@ void *GetMemory(unsigned long size)
+ // Changes Globals:		-
+ //===========================================================================
+ #ifdef MEMDEBUG
+-void *GetClearedMemoryDebug(unsigned long size, char *label, char *file, int line)
++void *GetClearedMemoryDebug(size_t size, const char *label, const char *file, int line)
+ #else
+-void *GetClearedMemory(unsigned long size)
++void *GetClearedMemory(size_t size)
+ #endif //MEMDEBUG
+ {
+ 	void *ptr;
+@@ -146,19 +147,20 @@ void *GetClearedMemory(unsigned long size)
+ // Changes Globals:		-
+ //===========================================================================
+ #ifdef MEMDEBUG
+-void *GetHunkMemoryDebug(unsigned long size, char *label, char *file, int line)
++void *GetHunkMemoryDebug(size_t size, const char *label, const char *file, int line)
+ #else
+-void *GetHunkMemory(unsigned long size)
++void *GetHunkMemory(size_t size)
+ #endif //MEMDEBUG
+ {
+-	void *ptr;
+ 	memoryblock_t *block;
+ 
+-	ptr = botimport.HunkAlloc(size + sizeof(memoryblock_t));
+-	block = (memoryblock_t *) ptr;
++	if (size > SIZE_MAX - sizeof(memoryblock_t))
++		botimport.Print(PRT_EXIT, "%s: bad size", __func__);
++
++	block = botimport.HunkAlloc(size + sizeof(memoryblock_t));
+ 	block->id = HUNK_ID;
+-	block->ptr = (char *) ptr + sizeof(memoryblock_t);
+-	block->size = size + sizeof(memoryblock_t);
++	block->ptr = block + 1;
++	block->size = size;
+ #ifdef MEMDEBUG
+ 	block->label = label;
+ 	block->file = file;
+@@ -177,9 +179,9 @@ void *GetHunkMemory(unsigned long size)
+ // Changes Globals:		-
+ //===========================================================================
+ #ifdef MEMDEBUG
+-void *GetClearedHunkMemoryDebug(unsigned long size, char *label, char *file, int line)
++void *GetClearedHunkMemoryDebug(size_t size, const char *label, const char *file, int line)
+ #else
+-void *GetClearedHunkMemory(unsigned long size)
++void *GetClearedHunkMemory(size_t size)
+ #endif //MEMDEBUG
+ {
+ 	void *ptr;
+@@ -277,9 +279,9 @@ int MemoryByteSize(void *ptr)
+ //===========================================================================
+ void PrintUsedMemorySize(void)
+ {
+-	botimport.Print(PRT_MESSAGE, "total allocated memory: %d KB\n", allocatedmemory >> 10);
+-	botimport.Print(PRT_MESSAGE, "total botlib memory: %d KB\n", totalmemorysize >> 10);
+-	botimport.Print(PRT_MESSAGE, "total memory blocks: %d\n", numblocks);
++	botimport.Print(PRT_MESSAGE, "total allocated memory: %"PRIz"u KB\n", allocatedmemory >> 10);
++	botimport.Print(PRT_MESSAGE, "total botlib memory: %"PRIz"u KB\n", totalmemorysize >> 10);
++	botimport.Print(PRT_MESSAGE, "total memory blocks: %"PRIz"u\n", numblocks);
+ } //end of the function PrintUsedMemorySize
+ //===========================================================================
+ //
+@@ -301,11 +303,11 @@ void PrintMemoryLabels(void)
+ #ifdef MEMDEBUG
+ 		if (block->id == HUNK_ID)
+ 		{
+-			Log_Write("%6d, hunk %p, %8d: %24s line %6d: %s\r\n", i, block->ptr, block->size, block->file, block->line, block->label);
++			Log_Write("%6d, hunk %p, %8"PRIz"u: %24s line %6d: %s\r\n", i, block->ptr, block->size, block->file, block->line, block->label);
+ 		} //end if
+ 		else
+ 		{
+-			Log_Write("%6d,      %p, %8d: %24s line %6d: %s\r\n", i, block->ptr, block->size, block->file, block->line, block->label);
++			Log_Write("%6d,      %p, %8"PRIz"u: %24s line %6d: %s\r\n", i, block->ptr, block->size, block->file, block->line, block->label);
+ 		} //end else
+ #endif //MEMDEBUG
+ 		i++;
+@@ -338,19 +340,19 @@ void DumpMemory(void)
+ // Changes Globals:		-
+ //===========================================================================
+ #ifdef MEMDEBUG
+-void *GetMemoryDebug(unsigned long size, char *label, char *file, int line)
++void *GetMemoryDebug(size_t size, const char *label, const char *file, int line)
+ #else
+-void *GetMemory(unsigned long size)
++void *GetMemory(size_t size)
+ #endif //MEMDEBUG
+ {
+-	void *ptr;
+-	unsigned long int *memid;
++	uintptr_t *memid;
++
++	if (size > SIZE_MAX - sizeof(*memid))
++		botimport.Print(PRT_EXIT, "%s: bad size", __func__);
+ 
+-	ptr = botimport.GetMemory(size + sizeof(unsigned long int));
+-	if (!ptr) return NULL;
+-	memid = (unsigned long int *) ptr;
++	memid = botimport.GetMemory(size + sizeof(*memid));
+ 	*memid = MEM_ID;
+-	return (unsigned long int *) ((char *) ptr + sizeof(unsigned long int));
++	return memid + 1;
+ } //end of the function GetMemory
+ //===========================================================================
+ //
+@@ -359,9 +361,9 @@ void *GetMemory(unsigned long size)
+ // Changes Globals:		-
+ //===========================================================================
+ #ifdef MEMDEBUG
+-void *GetClearedMemoryDebug(unsigned long size, char *label, char *file, int line)
++void *GetClearedMemoryDebug(size_t size, const char *label, const char *file, int line)
+ #else
+-void *GetClearedMemory(unsigned long size)
++void *GetClearedMemory(size_t size)
+ #endif //MEMDEBUG
+ {
+ 	void *ptr;
+@@ -370,10 +372,7 @@ void *GetClearedMemory(unsigned long size)
+ #else
+ 	ptr = GetMemory(size);
+ #endif //MEMDEBUG
+-	if (ptr)
+-	{
+-		Com_Memset(ptr, 0, size);
+-	}
++	Com_Memset(ptr, 0, size);
+ 	return ptr;
+ } //end of the function GetClearedMemory
+ //===========================================================================
+@@ -383,19 +382,19 @@ void *GetClearedMemory(unsigned long size)
+ // Changes Globals:		-
+ //===========================================================================
+ #ifdef MEMDEBUG
+-void *GetHunkMemoryDebug(unsigned long size, char *label, char *file, int line)
++void *GetHunkMemoryDebug(size_t size, const char *label, const char *file, int line)
+ #else
+-void *GetHunkMemory(unsigned long size)
++void *GetHunkMemory(size_t size)
+ #endif //MEMDEBUG
+ {
+-	void *ptr;
+-	unsigned long int *memid;
++	uintptr_t *memid;
+ 
+-	ptr = botimport.HunkAlloc(size + sizeof(unsigned long int));
+-	if (!ptr) return NULL;
+-	memid = (unsigned long int *) ptr;
++	if (size > SIZE_MAX - sizeof(*memid))
++		botimport.Print(PRT_EXIT, "%s: bad size", __func__);
++
++	memid = botimport.HunkAlloc(size + sizeof(*memid));
+ 	*memid = HUNK_ID;
+-	return (unsigned long int *) ((char *) ptr + sizeof(unsigned long int));
++	return memid + 1;
+ } //end of the function GetHunkMemory
+ //===========================================================================
+ //
+@@ -404,9 +403,9 @@ void *GetHunkMemory(unsigned long size)
+ // Changes Globals:		-
+ //===========================================================================
+ #ifdef MEMDEBUG
+-void *GetClearedHunkMemoryDebug(unsigned long size, char *label, char *file, int line)
++void *GetClearedHunkMemoryDebug(size_t size, const char *label, const char *file, int line)
+ #else
+-void *GetClearedHunkMemory(unsigned long size)
++void *GetClearedHunkMemory(size_t size)
+ #endif //MEMDEBUG
+ {
+ 	void *ptr;
+@@ -415,10 +414,7 @@ void *GetClearedHunkMemory(unsigned long size)
+ #else
+ 	ptr = GetHunkMemory(size);
+ #endif //MEMDEBUG
+-	if (ptr)
+-	{
+-		Com_Memset(ptr, 0, size);
+-	}
++	Com_Memset(ptr, 0, size);
+ 	return ptr;
+ } //end of the function GetClearedHunkMemory
+ //===========================================================================
+@@ -429,9 +425,14 @@ void *GetClearedHunkMemory(unsigned long size)
+ //===========================================================================
+ void FreeMemory(void *ptr)
+ {
+-	unsigned long int *memid;
++	uintptr_t *memid;
++
++	if (!ptr) {
++		botimport.Print(PRT_FATAL, "%s: NULL pointer\n", __func__);
++		return;
++	}
+ 
+-	memid = (unsigned long int *) ((char *) ptr - sizeof(unsigned long int));
++	memid = (uintptr_t *) ((char *) ptr - sizeof(*memid));
+ 
+ 	if (*memid == MEM_ID)
+ 	{
+diff --git a/code/botlib/l_memory.h b/code/botlib/l_memory.h
+index 17c89d5bf5..cb5ab54979 100644
+--- a/code/botlib/l_memory.h
++++ b/code/botlib/l_memory.h
+@@ -35,30 +35,30 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ #define GetMemory(size)				GetMemoryDebug(size, #size, __FILE__, __LINE__);
+ #define GetClearedMemory(size)		GetClearedMemoryDebug(size, #size, __FILE__, __LINE__);
+ //allocate a memory block of the given size
+-void *GetMemoryDebug(unsigned long size, char *label, char *file, int line);
++void *GetMemoryDebug(size_t size, const char *label, const char *file, int line);
+ //allocate a memory block of the given size and clear it
+-void *GetClearedMemoryDebug(unsigned long size, char *label, char *file, int line);
++void *GetClearedMemoryDebug(size_t size, const char *label, const char *file, int line);
+ //
+ #define GetHunkMemory(size)			GetHunkMemoryDebug(size, #size, __FILE__, __LINE__);
+ #define GetClearedHunkMemory(size)	GetClearedHunkMemoryDebug(size, #size, __FILE__, __LINE__);
+ //allocate a memory block of the given size
+-void *GetHunkMemoryDebug(unsigned long size, char *label, char *file, int line);
++void *GetHunkMemoryDebug(size_t size, const char *label, const char *file, int line);
+ //allocate a memory block of the given size and clear it
+-void *GetClearedHunkMemoryDebug(unsigned long size, char *label, char *file, int line);
++void *GetClearedHunkMemoryDebug(size_t size, const char *label, const char *file, int line);
+ #else
+ //allocate a memory block of the given size
+-void *GetMemory(unsigned long size);
++void *GetMemory(size_t size);
+ //allocate a memory block of the given size and clear it
+-void *GetClearedMemory(unsigned long size);
++void *GetClearedMemory(size_t size);
+ //
+ #ifdef BSPC
+ #define GetHunkMemory GetMemory
+ #define GetClearedHunkMemory GetClearedMemory
+ #else
+ //allocate a memory block of the given size
+-void *GetHunkMemory(unsigned long size);
++void *GetHunkMemory(size_t size);
+ //allocate a memory block of the given size and clear it
+-void *GetClearedHunkMemory(unsigned long size);
++void *GetClearedHunkMemory(size_t size);
+ #endif
+ #endif
+ 
+
+From cab166b3da9c442a26e6171fa760176a36bd4d78 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 01:32:19 +0300
+Subject: [PATCH 03/18] Validate botlib vars range.
+
+Untrusted game code can manipulate these. Range must be validated to
+prevent integer overflows when allocating memory.
+---
+ code/botlib/be_aas_main.c   |  4 ++--
+ code/botlib/be_aas_route.c  |  2 +-
+ code/botlib/be_aas_sample.c |  3 +--
+ code/botlib/be_ai_chat.c    |  2 +-
+ code/botlib/be_ai_goal.c    | 10 ++--------
+ code/botlib/be_ai_weap.c    | 17 +++--------------
+ code/botlib/be_interface.c  |  4 ++--
+ code/botlib/l_libvar.c      | 24 ++++++++++++++++++++++++
+ code/botlib/l_libvar.h      |  2 ++
+ code/server/sv_bot.c        |  5 ++++-
+ 10 files changed, 42 insertions(+), 31 deletions(-)
+
+diff --git a/code/botlib/be_aas_main.c b/code/botlib/be_aas_main.c
+index 046a48f2e2..def8aabaa3 100644
+--- a/code/botlib/be_aas_main.c
++++ b/code/botlib/be_aas_main.c
+@@ -292,8 +292,8 @@ int AAS_LoadMap(const char *mapname)
+ //===========================================================================
+ int AAS_Setup(void)
+ {
+-	aasworld.maxclients = (int) LibVarValue("maxclients", "128");
+-	aasworld.maxentities = (int) LibVarValue("maxentities", "1024");
++	aasworld.maxclients = LibVarInteger("maxclients", "128", 0, MAX_CLIENTS);
++	aasworld.maxentities = LibVarInteger("maxentities", "1024", 0, MAX_GENTITIES);
+ 	// as soon as it's set to 1 the routing cache will be saved
+ 	saveroutingcache = LibVar("saveroutingcache", "0");
+ 	//allocate memory for the entities
+diff --git a/code/botlib/be_aas_route.c b/code/botlib/be_aas_route.c
+index 44cd405be4..fe761a21b5 100644
+--- a/code/botlib/be_aas_route.c
++++ b/code/botlib/be_aas_route.c
+@@ -1244,7 +1244,7 @@ void AAS_InitRouting(void)
+ #endif //ROUTING_DEBUG
+ 	//
+ 	routingcachesize = 0;
+-	max_routingcachesize = 1024 * (int) LibVarValue("max_routingcache", "12288");
++	max_routingcachesize = 1024 * LibVarInteger("max_routingcache", "12288", 0, 65536);
+ 	// read any routing cache if available
+ 	AAS_ReadRouteCache();
+ } //end of the function AAS_InitRouting
+diff --git a/code/botlib/be_aas_sample.c b/code/botlib/be_aas_sample.c
+index f9047bc738..249b89f04f 100644
+--- a/code/botlib/be_aas_sample.c
++++ b/code/botlib/be_aas_sample.c
+@@ -103,9 +103,8 @@ void AAS_InitAASLinkHeap(void)
+ #ifdef BSPC
+ 		max_aaslinks = 6144;
+ #else
+-		max_aaslinks = (int) LibVarValue("max_aaslinks", "6144");
++		max_aaslinks = LibVarInteger("max_aaslinks", "6144", 2, 65536);
+ #endif
+-		if (max_aaslinks < 0) max_aaslinks = 0;
+ 		aasworld.linkheapsize = max_aaslinks;
+ 		aasworld.linkheap = (aas_link_t *) GetHunkMemory(max_aaslinks * sizeof(aas_link_t));
+ 	} //end if
+diff --git a/code/botlib/be_ai_chat.c b/code/botlib/be_ai_chat.c
+index 5370afb2a7..8daa1f92aa 100644
+--- a/code/botlib/be_ai_chat.c
++++ b/code/botlib/be_ai_chat.c
+@@ -244,7 +244,7 @@ static void InitConsoleMessageHeap(void)
+ 
+ 	if (consolemessageheap) FreeMemory(consolemessageheap);
+ 	//
+-	max_messages = (int) LibVarValue("max_messages", "1024");
++	max_messages = LibVarInteger("max_messages", "1024", 2, 65536);
+ 	consolemessageheap = (bot_consolemessage_t *) GetClearedHunkMemory(max_messages *
+ 												sizeof(bot_consolemessage_t));
+ 	consolemessageheap[0].prev = NULL;
+diff --git a/code/botlib/be_ai_goal.c b/code/botlib/be_ai_goal.c
+index cc3dfc760c..bbe2014981 100644
+--- a/code/botlib/be_ai_goal.c
++++ b/code/botlib/be_ai_goal.c
+@@ -278,13 +278,7 @@ static itemconfig_t *LoadItemConfig( const char *filename )
+ 	itemconfig_t *ic;
+ 	iteminfo_t *ii;
+ 
+-	max_iteminfo = (int) LibVarValue("max_iteminfo", "256");
+-	if (max_iteminfo < 0)
+-	{
+-		botimport.Print(PRT_ERROR, "max_iteminfo = %d\n", max_iteminfo);
+-		max_iteminfo = 256;
+-		LibVarSet( "max_iteminfo", "256" );
+-	}
++	max_iteminfo = LibVarInteger("max_iteminfo", "256", 0, 4096);
+ 
+ 	Q_strncpyz( path, filename, sizeof( path ) );
+ 	PC_SetBaseFolder(BOTFILESBASEFOLDER);
+@@ -379,7 +373,7 @@ static void InitLevelItemHeap(void)
+ 
+ 	if (levelitemheap) FreeMemory(levelitemheap);
+ 
+-	max_levelitems = (int) LibVarValue("max_levelitems", "256");
++	max_levelitems = LibVarInteger("max_levelitems", "256", 1, 4096);
+ 	levelitemheap = (levelitem_t *) GetClearedMemory(max_levelitems * sizeof(levelitem_t));
+ 
+ 	for (i = 0; i < max_levelitems-1; i++)
+diff --git a/code/botlib/be_ai_weap.c b/code/botlib/be_ai_weap.c
+index d46bdf0ba9..b5fcd9ef46 100644
+--- a/code/botlib/be_ai_weap.c
++++ b/code/botlib/be_ai_weap.c
+@@ -205,20 +205,9 @@ static weaponconfig_t *LoadWeaponConfig(const char *filename)
+ 	weaponconfig_t *wc;
+ 	weaponinfo_t weaponinfo;
+ 
+-	max_weaponinfo = (int) LibVarValue("max_weaponinfo", "32");
+-	if (max_weaponinfo < 0)
+-	{
+-		botimport.Print(PRT_ERROR, "max_weaponinfo = %d\n", max_weaponinfo);
+-		max_weaponinfo = 32;
+-		LibVarSet("max_weaponinfo", "32");
+-	} //end if
+-	max_projectileinfo = (int) LibVarValue("max_projectileinfo", "32");
+-	if (max_projectileinfo < 0)
+-	{
+-		botimport.Print(PRT_ERROR, "max_projectileinfo = %d\n", max_projectileinfo);
+-		max_projectileinfo = 32;
+-		LibVarSet("max_projectileinfo", "32");
+-	} //end if
++	max_weaponinfo = LibVarInteger("max_weaponinfo", "32", 0, 4096);
++	max_projectileinfo = LibVarInteger("max_projectileinfo", "32", 0, 4096);
++
+ 	Q_strncpyz( path, filename, sizeof( path ) );
+ 	PC_SetBaseFolder(BOTFILESBASEFOLDER);
+ 	source = LoadSourceFile(path);
+diff --git a/code/botlib/be_interface.c b/code/botlib/be_interface.c
+index 2337275805..b914ed7cb5 100644
+--- a/code/botlib/be_interface.c
++++ b/code/botlib/be_interface.c
+@@ -133,8 +133,8 @@ static int Export_BotLibSetup( void )
+ 
+ 	botimport.Print( PRT_MESSAGE, "------- BotLib Initialization -------\n" );
+ 
+-	botlibglobals.maxclients = (int) LibVarValue( "maxclients", "64" );
+-	botlibglobals.maxentities = (int) LibVarValue( "maxentities", "1024" );
++	botlibglobals.maxclients = LibVarInteger( "maxclients", "64", 0, MAX_CLIENTS );
++	botlibglobals.maxentities = LibVarInteger( "maxentities", "1024", 0, MAX_GENTITIES );
+ 
+ 	errnum = AAS_Setup();			//be_aas_main.c
+ 	if (errnum != BLERR_NOERROR) return errnum;
+diff --git a/code/botlib/l_libvar.c b/code/botlib/l_libvar.c
+index fedf57f7f2..072c16dcd2 100644
+--- a/code/botlib/l_libvar.c
++++ b/code/botlib/l_libvar.c
+@@ -30,8 +30,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+  *****************************************************************************/
+ 
+ #include "../qcommon/q_shared.h"
++#include "botlib.h"
+ #include "l_memory.h"
+ #include "l_libvar.h"
++#include "be_interface.h"
+ 
+ //list with library variables
+ libvar_t *libvarlist = NULL;
+@@ -232,6 +234,28 @@ float LibVarValue( const char *var_name, const char *value )
+ 	v = LibVar( var_name, value );
+ 	return v->value;
+ } //end of the function LibVarValue
++
++int LibVarInteger( const char *var_name, const char *value, int min_v, int max_v )
++{
++	int v = (int) LibVarValue(var_name, value);
++
++	// if less than minimum, reset to default value
++	// if more than maximum, set to maximum
++	if (v < min_v || v > max_v)
++	{
++		botimport.Print(PRT_ERROR, "%s = %d\n", var_name, v);
++		if (v < min_v) {
++			v = atoi(value);
++			LibVarSet(var_name, value);
++		} else {
++			v = max_v;
++			LibVarSet(var_name, va("%d", max_v));
++		}
++	}
++
++	return v;
++}
++
+ //===========================================================================
+ //
+ // Parameter:				-
+diff --git a/code/botlib/l_libvar.h b/code/botlib/l_libvar.h
+index 1dec97c384..37151f307f 100644
+--- a/code/botlib/l_libvar.h
++++ b/code/botlib/l_libvar.h
+@@ -52,6 +52,8 @@ float LibVarGetValue( const char *var_name );
+ libvar_t *LibVar( const char *var_name, const char *value );
+ //creates the library variable if not existing already and returns the value
+ float LibVarValue( const char *var_name, const char *value );
++//creates the library variable if not existing already and returns the integer value
++int LibVarInteger( const char *var_name, const char *value, int min_v, int max_v );
+ //creates the library variable if not existing already and returns the value string
+ const char *LibVarString( const char *var_name, const char *value );
+ //sets the library variable
+diff --git a/code/server/sv_bot.c b/code/server/sv_bot.c
+index 11115e7d1d..fce9e4f739 100644
+--- a/code/server/sv_bot.c
++++ b/code/server/sv_bot.c
+@@ -498,11 +498,12 @@ SV_BotInitCvars
+ ==================
+ */
+ void SV_BotInitCvars(void) {
++	cvar_t *cv;
+ 
+ 	Cvar_Get("bot_enable", "1", 0);						//enable the bot
+ 	Cvar_Get("bot_developer", "0", CVAR_CHEAT);			//bot developer mode
+ 	Cvar_Get("bot_debug", "0", CVAR_CHEAT);				//enable bot debugging
+-	Cvar_Get("bot_maxdebugpolys", "2", 0);				//maximum number of debug polys
++	cv = Cvar_Get("bot_maxdebugpolys", "2", 0);			//maximum number of debug polys
+ 	Cvar_Get("bot_groundonly", "1", 0);					//only show ground faces of areas
+ 	Cvar_Get("bot_reachability", "0", 0);				//show all reachabilities to other areas
+ 	Cvar_Get("bot_visualizejumppads", "0", CVAR_CHEAT);	//show jumppads
+@@ -529,6 +530,8 @@ void SV_BotInitCvars(void) {
+ 	Cvar_Get("bot_interbreedbots", "10", CVAR_CHEAT);	//number of bots used for interbreeding
+ 	Cvar_Get("bot_interbreedcycle", "20", CVAR_CHEAT);	//bot interbreeding cycle
+ 	Cvar_Get("bot_interbreedwrite", "", CVAR_CHEAT);	//write interbreeded bots to this file
++
++	Cvar_CheckRange(cv, "0", "65536", CV_INTEGER);
+ }
+ 
+ /*
+
+From a4f5e79f03b05f37ca21b45d53b583baa219b2a4 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 01:32:20 +0300
+Subject: [PATCH 04/18] Validate AAS_UpdateEntity() argument.
+
+Caller checks entnum against botlibglobals.maxentities, but it can
+potentially desync from aasworld.maxentities if game code manipulates
+vars.
+---
+ code/botlib/be_aas_entity.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/code/botlib/be_aas_entity.c b/code/botlib/be_aas_entity.c
+index e325d9bb31..9e8cfd3906 100644
+--- a/code/botlib/be_aas_entity.c
++++ b/code/botlib/be_aas_entity.c
+@@ -72,6 +72,12 @@ int AAS_UpdateEntity(int entnum, bot_entitystate_t *state)
+ 		return BLERR_NOAASFILE;
+ 	} //end if
+ 
++	if (entnum < 0 || entnum >= aasworld.maxentities)
++	{
++		botimport.Print(PRT_FATAL, "AAS_UpdateEntity: entnum %d out of range\n", entnum);
++		return BLERR_INVALIDENTITYNUMBER;
++	}
++
+ 	ent = &aasworld.entities[entnum];
+ 
+ 	if (!state) {
+
+From 00624530fd5d6c63327533967b008be0ebab3c38 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Tue, 17 Mar 2026 01:52:01 +0300
+Subject: [PATCH 05/18] Validate AAS file structure.
+
+---
+ code/botlib/be_aas_file.c | 168 +++++++++++++++++++++++++++++++++++---
+ code/botlib/be_aas_file.h |   2 -
+ 2 files changed, 157 insertions(+), 13 deletions(-)
+
+diff --git a/code/botlib/be_aas_file.c b/code/botlib/be_aas_file.c
+index 5bdc72dcf2..415039fba1 100644
+--- a/code/botlib/be_aas_file.c
++++ b/code/botlib/be_aas_file.c
+@@ -173,6 +173,130 @@ static void AAS_SwapAASData(void)
+ 		aasworld.clusters[i].firstportal = LittleLong(aasworld.clusters[i].firstportal);
+ 	} //end for
+ } //end of the function AAS_SwapAASData
++
++#define CHECK_RANGE(first, count, limit) \
++	((uint64_t)(unsigned)(first) + (unsigned)(count) > (limit))
++
++#define UABS(c)	(((c) & 0x80000000) ? -(unsigned)c : (unsigned)c)
++
++static const char *AAS_ValidateAASData(void)
++{
++	unsigned c, numareas, numreachabilityareas;
++	int i, j;
++
++	c = aasworld.numvertexes ? aasworld.numvertexes : 1;
++
++	for (i = 0; i < aasworld.numedges; i++) {
++		if ((unsigned)aasworld.edges[i].v[0] >= c || (unsigned)aasworld.edges[i].v[1] >= c)
++			return "edges: bad vertexes";
++	}
++
++	for (i = 0; i < aasworld.edgeindexsize; i++) {
++		if (UABS(aasworld.edgeindex[i]) >= aasworld.numedges)
++			return "edgeindex: bad edge";
++	}
++
++	for (i = 0; i < aasworld.numfaces; i++) {
++		if ((unsigned)aasworld.faces[i].planenum >= aasworld.numplanes)
++			return "faces: bad planenum";
++		if (CHECK_RANGE(aasworld.faces[i].firstedge, aasworld.faces[i].numedges, aasworld.edgeindexsize))
++			return "faces: bad edges";
++		if ((unsigned)aasworld.faces[i].frontarea >= aasworld.numareas)
++			return "faces: bad frontarea";
++		if ((unsigned)aasworld.faces[i].backarea >= aasworld.numareas)
++			return "faces: bad backarea";
++	}
++
++	for (i = 0; i < aasworld.faceindexsize; i++) {
++		if (UABS(aasworld.faceindex[i]) >= aasworld.numfaces)
++			return "faceindex: bad face";
++	}
++
++	for (i = 0; i < aasworld.numareas; i++) {
++		if (CHECK_RANGE(aasworld.areas[i].firstface, aasworld.areas[i].numfaces, aasworld.faceindexsize))
++			return "areas: bad faces";
++	}
++
++	for (i = 0; i < aasworld.numareasettings; i++) {
++		if (CHECK_RANGE(aasworld.areasettings[i].firstreachablearea,
++						aasworld.areasettings[i].numreachableareas,
++						aasworld.reachabilitysize))
++			return "areasettings: bad reachable areas";
++		c = aasworld.areasettings[i].cluster;
++		if (c & 0x80000000) {
++			if (-c >= aasworld.numportals)
++				return "areasettings: bad portal";
++		} else {
++			if (c >= aasworld.numclusters)
++				return "areasettings: bad cluster";
++			if ((unsigned)aasworld.areasettings[i].clusterareanum >= (c ? aasworld.clusters[c].numareas : 1))
++				return "areasettings: bad clusterareanum";
++		}
++	}
++
++	for (i = 0; i < aasworld.reachabilitysize; i++) {
++		if ((unsigned)aasworld.reachability[i].areanum >= aasworld.numareasettings)
++			return "reachability: bad areanum";
++		switch (aasworld.reachability[i].traveltype & TRAVELTYPE_MASK)
++			case TRAVEL_ELEVATOR: case TRAVEL_JUMPPAD: case TRAVEL_FUNCBOB: continue;
++		if (UABS(aasworld.reachability[i].facenum) >= aasworld.numfaces)
++			return "reachability: bad facenum";
++		if (UABS(aasworld.reachability[i].edgenum) >= aasworld.numedges)
++			return "reachability: bad edgenum";
++	}
++
++	for (i = 0; i < aasworld.numnodes; i++) {
++		if ((unsigned)aasworld.nodes[i].planenum >= aasworld.numplanes)
++			return "nodes: bad planenum";
++		for (j = 0; j < 2; j++) {
++			c = aasworld.nodes[i].children[j];
++			if (c & 0x80000000) {
++				if (-c >= aasworld.numareasettings)
++					return "nodes: bad areasetting";
++			} else {
++				if (c >= aasworld.numnodes)
++					return "nodes: bad node";
++			}
++		}
++	}
++
++	for (i = 0; i < aasworld.numportals; i++) {
++		if ((unsigned)aasworld.portals[i].areanum >= aasworld.numareas)
++			return "portals: bad areanum";
++
++		c = aasworld.portals[i].frontcluster;
++		if (c >= aasworld.numclusters)
++			return "portals: bad frontcluster";
++		if ((unsigned)aasworld.portals[i].clusterareanum[0] >= (c ? aasworld.clusters[c].numareas : 1))
++			return "portals: bad clusterareanum[0]";
++
++		c = aasworld.portals[i].backcluster;
++		if (c >= aasworld.numclusters)
++			return "portals: bad backcluster";
++		if ((unsigned)aasworld.portals[i].clusterareanum[1] >= (c ? aasworld.clusters[c].numareas : 1))
++			return "portals: bad clusterareanum[1]";
++	}
++
++	for (i = 0; i < aasworld.portalindexsize; i++) {
++		if ((unsigned)aasworld.portalindex[i] >= aasworld.numportals)
++			return "portalindex: bad portal";
++	}
++
++	numareas = numreachabilityareas = 0;
++	for (i = 0; i < aasworld.numclusters; i++) {
++		if ((unsigned)aasworld.clusters[i].numareas > 0xffff - numareas)
++			return "clusters: bad numareas";
++		if ((unsigned)aasworld.clusters[i].numreachabilityareas > 0xffff - numreachabilityareas)
++			return "clusters: bad numreachabilityareas";
++		if (CHECK_RANGE(aasworld.clusters[i].firstportal, aasworld.clusters[i].numportals, aasworld.portalindexsize))
++			return "clusters: bad portals";
++		numareas += aasworld.clusters[i].numareas;
++		numreachabilityareas += aasworld.clusters[i].numreachabilityareas;
++	}
++
++	return NULL;
++}
++
+ //===========================================================================
+ // dump the current loaded aas file
+ //
+@@ -287,15 +411,22 @@ static void AAS_FileInfo(void)
+ // Returns:					-
+ // Changes Globals:		-
+ //===========================================================================
+-static char *AAS_LoadAASLump(fileHandle_t fp, int offset, int length, int *lastoffset, int size)
++static char *AAS_LoadAASLump(fileHandle_t fp, long offset, unsigned length, long *lastoffset, unsigned size)
+ {
+ 	char *buf;
+ 	//
+ 	if (!length)
+ 	{
+ 		//just alloc a dummy
+-		return (char *) GetClearedHunkMemory(size+1);
++		return (char *) GetClearedHunkMemory(size);
+ 	} //end if
++	if (length > INT_MAX || length % size || offset < 0 || length > LONG_MAX - offset)
++	{
++		AAS_Error("bad AAS lump offset/length\n");
++		AAS_DumpAASData();
++		botimport.FS_FCloseFile(fp);
++		return NULL;
++	}
+ 	//seek to the data
+ 	if (offset != *lastoffset)
+ 	{
+@@ -309,13 +440,15 @@ static char *AAS_LoadAASLump(fileHandle_t fp, int offset, int length, int *lasto
+ 		} //end if
+ 	} //end if
+ 	//allocate memory
+-	buf = (char *) GetClearedHunkMemory(length+1);
++	buf = (char *) GetClearedHunkMemory(length);
+ 	//read the data
+-	//if (length)
+-	{
+-		botimport.FS_Read(buf, length, fp );
+-		*lastoffset += length;
+-	} //end if
++	if (botimport.FS_Read(buf, length, fp) != length) {
++		AAS_Error("can't read AAS file\n");
++		AAS_DumpAASData();
++		botimport.FS_FCloseFile(fp);
++		return NULL;
++	}
++	*lastoffset = offset + length;
+ 	return buf;
+ } //end of the function AAS_LoadAASLump
+ //===========================================================================
+@@ -344,7 +477,9 @@ int AAS_LoadAASFile(char *filename)
+ {
+ 	fileHandle_t fp;
+ 	aas_header_t header;
+-	int offset, length, lastoffset;
++	long offset, lastoffset;
++	unsigned length;
++	const char *err;
+ 
+ 	botimport.Print(PRT_MESSAGE, "trying to load %s\n", filename);
+ 	//dump current loaded aas file
+@@ -357,8 +492,13 @@ int AAS_LoadAASFile(char *filename)
+ 		return BLERR_CANNOTOPENAASFILE;
+ 	} //end if
+ 	//read the header
+-	botimport.FS_Read(&header, sizeof(aas_header_t), fp );
+-	lastoffset = sizeof(aas_header_t);
++	lastoffset = botimport.FS_Read(&header, sizeof(aas_header_t), fp);
++	if (lastoffset != sizeof(aas_header_t))
++	{
++		AAS_Error("AAS file %s is too short\n", filename);
++		botimport.FS_FCloseFile(fp);
++		return BLERR_CANNOTOPENAASFILE;
++	}
+ 	//check header identification
+ 	header.ident = LittleLong(header.ident);
+ 	if (header.ident != AASID)
+@@ -476,6 +616,12 @@ int AAS_LoadAASFile(char *filename)
+ 	if (aasworld.numclusters && !aasworld.clusters) return BLERR_CANNOTREADAASLUMP;
+ 	//swap everything
+ 	AAS_SwapAASData();
++	err = AAS_ValidateAASData();
++	if (err) {
++		AAS_Error("AAS file %s is corrupted: %s\n", filename, err);
++		botimport.FS_FCloseFile(fp);
++		return BLERR_CANNOTREADAASLUMP;
++	}
+ 	//aas file is loaded
+ 	aasworld.loaded = qtrue;
+ 	//close the file
+diff --git a/code/botlib/be_aas_file.h b/code/botlib/be_aas_file.h
+index c2271fcf49..012858f8ae 100644
+--- a/code/botlib/be_aas_file.h
++++ b/code/botlib/be_aas_file.h
+@@ -36,7 +36,5 @@ int AAS_LoadAASFile(char *filename);
+ qboolean AAS_WriteAASFile(char *filename);
+ //dumps the loaded AAS data
+ void AAS_DumpAASData(void);
+-//print AAS file information
+-void AAS_FileInfo(void);
+ #endif //AASINTERN
+ 
+
+From d9fe72f2cd872bff5e5ec9e1ebc824d356757959 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 01:32:21 +0300
+Subject: [PATCH 06/18] Harden QVM header validity checks.
+
+---
+ code/qcommon/qfiles.h | 18 +++++++++---------
+ code/qcommon/vm.c     | 40 +++++++++++++++++++++++++++-------------
+ 2 files changed, 36 insertions(+), 22 deletions(-)
+
+diff --git a/code/qcommon/qfiles.h b/code/qcommon/qfiles.h
+index 4acef5b927..d4672b58ce 100644
+--- a/code/qcommon/qfiles.h
++++ b/code/qcommon/qfiles.h
+@@ -46,20 +46,20 @@ QVM files
+ #define	VM_MAGIC			0x12721444
+ #define	VM_MAGIC_VER2	0x12721445
+ typedef struct {
+-	int32_t vmMagic;
++	uint32_t vmMagic;
+ 
+-	int32_t instructionCount;
++	uint32_t instructionCount;
+ 
+-	int32_t codeOffset;
+-	int32_t codeLength;
++	uint32_t codeOffset;
++	uint32_t codeLength;
+ 
+-	int32_t dataOffset;
+-	int32_t dataLength;
+-	int32_t litLength;			// ( dataLength - litLength ) should be byteswapped on load
+-	int32_t bssLength;			// zero filled memory appended to datalength
++	uint32_t dataOffset;
++	uint32_t dataLength;
++	uint32_t litLength;			// ( dataLength - litLength ) should be byteswapped on load
++	uint32_t bssLength;			// zero filled memory appended to datalength
+ 
+ 	//!!! below here is VM_MAGIC_VER2 !!!
+-	int32_t jtrgLength;			// number of jump table targets
++	uint32_t jtrgLength;			// number of jump table targets
+ } vmHeader_t;
+ 
+ /*
+diff --git a/code/qcommon/vm.c b/code/qcommon/vm.c
+index 735414f701..c36ca401ac 100644
+--- a/code/qcommon/vm.c
++++ b/code/qcommon/vm.c
+@@ -654,13 +654,13 @@ static int Load_JTS( vm_t *vm, uint32_t crc32, void *data, int vmPakIndex ) {
+ VM_ValidateHeader
+ =================
+ */
+-static char *VM_ValidateHeader( vmHeader_t *header, int fileSize )
++static char *VM_ValidateHeader( vmHeader_t *header, uint32_t fileSize )
+ {
+ 	static char errMsg[128];
+-	int n;
++	uint32_t n;
+ 
+ 	// truncated
+-	if ( fileSize < ( sizeof( vmHeader_t ) - sizeof( int32_t ) ) ) {
++	if ( fileSize < ( sizeof( vmHeader_t ) - sizeof( uint32_t ) ) ) {
+ 		sprintf( errMsg, "truncated image header (%i bytes long)", fileSize );
+ 		return errMsg;
+ 	}
+@@ -680,45 +680,59 @@ static char *VM_ValidateHeader( vmHeader_t *header, int fileSize )
+ 	if ( LittleLong( header->vmMagic ) == VM_MAGIC_VER2 )
+ 		n = sizeof( vmHeader_t );
+ 	else
+-		n = ( sizeof( vmHeader_t ) - sizeof( int32_t ) );
++		n = ( sizeof( vmHeader_t ) - sizeof( uint32_t ) );
+ 
+ 	// byte swap the header
+ 	VM_SwapLongs( header, n );
+ 
++	// can't have more instructions than bytes of code
++	if ( header->instructionCount > header->codeLength ) {
++		sprintf( errMsg, "bad instruction count %u", header->instructionCount );
++		return errMsg;
++	}
++
+ 	// bad code offset
+ 	if ( header->codeOffset >= fileSize ) {
+-		sprintf( errMsg, "bad code segment offset %i", header->codeOffset );
++		sprintf( errMsg, "bad code segment offset %u", header->codeOffset );
+ 		return errMsg;
+ 	}
+ 
+ 	// bad code length
+-	if ( header->codeLength <= 0 || header->codeOffset + header->codeLength > fileSize ) {
+-		sprintf( errMsg, "bad code segment length %i", header->codeLength );
++	if ( header->codeLength > fileSize - header->codeOffset ) {
++		sprintf( errMsg, "bad code segment length %u", header->codeLength );
+ 		return errMsg;
+ 	}
+ 
+ 	// bad data offset
+ 	if ( header->dataOffset >= fileSize || header->dataOffset != header->codeOffset + header->codeLength ) {
+-		sprintf( errMsg, "bad data segment offset %i", header->dataOffset );
++		sprintf( errMsg, "bad data segment offset %u", header->dataOffset );
+ 		return errMsg;
+ 	}
+ 
+ 	// bad data length
+-	if ( header->dataOffset + header->dataLength > fileSize )  {
+-		sprintf( errMsg, "bad data segment length %i", header->dataLength );
++	if ( header->dataLength > fileSize - header->dataOffset )  {
++		sprintf( errMsg, "bad data segment length %u", header->dataLength );
+ 		return errMsg;
+ 	}
+ 
++	n = fileSize - (header->dataOffset + header->dataLength);
++
+ 	if ( header->vmMagic == VM_MAGIC_VER2 ) {
+ 		// bad lit/jtrg length
+-		if ( header->dataOffset + header->dataLength + header->litLength + header->jtrgLength != fileSize ) {
++		if ( (uint64_t)header->litLength + header->jtrgLength != n ) {
+ 			sprintf( errMsg, "bad lit/jtrg segment length" );
+ 			return errMsg;
+ 		}
+ 	}
+ 	// bad lit length
+-	else if ( header->dataOffset + header->dataLength + header->litLength != fileSize ) {
+-		sprintf( errMsg, "bad lit segment length %i", header->litLength );
++	else if ( header->litLength != n ) {
++		sprintf( errMsg, "bad lit segment length %u", header->litLength );
++		return errMsg;
++	}
++
++	// size of data should not exceed 2^30-1 before padding
++	if ( (uint64_t)header->bssLength + header->dataLength + header->litLength >= (1U<<30) ) {
++		sprintf( errMsg, "bad bss segment length %u", header->bssLength );
+ 		return errMsg;
+ 	}
+ 
+
+From 18b2e4380e941a0728708a93e45515235ebaa8b4 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 01:32:21 +0300
+Subject: [PATCH 07/18] Harden MD3 header validity checks.
+
+---
+ code/qcommon/qfiles.h      |  2 +-
+ code/renderer/tr_model.c   | 45 ++++++++++++++++++++++----------------
+ code/renderervk/tr_model.c | 45 ++++++++++++++++++++++----------------
+ 3 files changed, 53 insertions(+), 39 deletions(-)
+
+diff --git a/code/qcommon/qfiles.h b/code/qcommon/qfiles.h
+index d4672b58ce..a558166f9c 100644
+--- a/code/qcommon/qfiles.h
++++ b/code/qcommon/qfiles.h
+@@ -135,7 +135,7 @@ typedef struct {
+ } md3Shader_t;
+ 
+ typedef struct {
+-	int			indexes[3];
++	uint32_t	indexes[3];
+ } md3Triangle_t;
+ 
+ typedef struct {
+diff --git a/code/renderer/tr_model.c b/code/renderer/tr_model.c
+index 1793788d78..5355f47279 100644
+--- a/code/renderer/tr_model.c
++++ b/code/renderer/tr_model.c
+@@ -391,8 +391,8 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 	md3St_t				*st;
+ 	md3XyzNormal_t		*xyz;
+ 	md3Tag_t			*tag;
+-	int					version;
+-	int					size;
++	uint32_t			version;
++	uint32_t			size, bytesToEnd;
+ 
+ 	pinmodel = (md3Header_t *)buffer;
+ 
+@@ -437,20 +437,16 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+ 		return qfalse;
+ 	}
+-	if ( (unsigned)( hdr->numFrames | hdr->numTags | hdr->numSkins ) > (1 << 20) ) {
+-		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+-		return qfalse;
+-	}
+ 
+-	if ( hdr->ofsFrames + hdr->numFrames * sizeof( md3Frame_t ) > fileSize ) {
++	if ( hdr->numFrames > (size - hdr->ofsFrames) / sizeof( md3Frame_t ) ) {
+ 		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+ 		return qfalse;
+ 	}
+-	if ( hdr->ofsTags + hdr->numTags * hdr->numFrames * sizeof( md3Tag_t ) > fileSize ) {
++	if ( hdr->numTags > (size - hdr->ofsTags) / (sizeof( md3Tag_t ) * hdr->numFrames) ) {
+ 		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+ 		return qfalse;
+ 	}
+-	if ( hdr->ofsSurfaces + ( hdr->numSurfaces ? 1 : 0 ) * sizeof( md3Surface_t ) > fileSize ) {
++	if ( hdr->numSurfaces > (size - hdr->ofsSurfaces) / sizeof( md3Surface_t ) ) {
+ 		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+ 		return qfalse;
+ 	}
+@@ -483,6 +479,14 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 	surf = (md3Surface_t *) ( (byte *)hdr + hdr->ofsSurfaces );
+ 	for ( i = 0 ; i < hdr->numSurfaces; i++) {
+ 
++		// how many bytes are remaining before end of file
++		bytesToEnd = size - ((byte*)surf - (byte*)hdr);
++
++		if ( bytesToEnd < sizeof(*surf)) {
++			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
++			return qfalse;
++		}
++
+ 		LL(surf->ident);
+ 		LL(surf->flags);
+ 		LL(surf->numFrames);
+@@ -495,27 +499,24 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 		LL(surf->ofsXyzNormals);
+ 		LL(surf->ofsEnd);
+ 
+-		if ( surf->ofsEnd > fileSize || (((byte*)surf - (byte*)hdr) + surf->ofsEnd) > fileSize ) {
++		if ( surf->ofsTriangles > bytesToEnd || surf->ofsShaders > bytesToEnd || surf->ofsSt > bytesToEnd ||
++			 surf->ofsXyzNormals > bytesToEnd || surf->ofsEnd > bytesToEnd ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+-		if ( surf->ofsTriangles > fileSize || surf->ofsShaders > fileSize || surf->ofsSt > fileSize || surf->ofsXyzNormals > fileSize ) {
++		if ( surf->numTriangles > (bytesToEnd - surf->ofsTriangles) / sizeof( md3Triangle_t ) ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+-		if ( surf->ofsTriangles + surf->numTriangles * sizeof( md3Triangle_t ) > fileSize ) {
++		if ( surf->numShaders > (bytesToEnd - surf->ofsShaders) / sizeof( md3Shader_t ) ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+-		if ( surf->ofsShaders + surf->numShaders * sizeof( md3Shader_t ) > fileSize || surf->numShaders > (1<<20) ) {
++		if ( surf->numVerts > (bytesToEnd - surf->ofsSt) / sizeof( md3St_t ) ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+-		if ( surf->ofsSt + surf->numVerts * sizeof( md3St_t ) > fileSize ) {
+-			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+-			return qfalse;
+-		}
+-		if ( surf->ofsXyzNormals + surf->numVerts * sizeof( md3XyzNormal_t ) > fileSize ) {
++		if ( surf->numVerts > (bytesToEnd - surf->ofsXyzNormals) / sizeof( md3XyzNormal_t ) ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+@@ -526,7 +527,7 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 				surf->numVerts );
+ 			return qfalse;
+ 		}
+-		if ( surf->numTriangles*3 >= SHADER_MAX_INDEXES ) {
++		if ( surf->numTriangles >= SHADER_MAX_INDEXES / 3 ) {
+ 			ri.Printf(PRINT_WARNING, "%s: %s has more than %i triangles on %s (%i).\n", __func__,
+ 				mod_name, ( SHADER_MAX_INDEXES / 3 ) - 1, surf->name[0] ? surf->name : "a surface",
+ 				surf->numTriangles );
+@@ -571,6 +572,12 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 			LL(tri->indexes[0]);
+ 			LL(tri->indexes[1]);
+ 			LL(tri->indexes[2]);
++			if (tri->indexes[0] >= surf->numVerts ||
++				tri->indexes[1] >= surf->numVerts ||
++				tri->indexes[2] >= surf->numVerts) {
++				ri.Printf( PRINT_WARNING, "%s: %s has corrupted indexes\n", __func__, mod_name );
++				return qfalse;
++			}
+ 		}
+ 
+ 		// swap all the ST
+diff --git a/code/renderervk/tr_model.c b/code/renderervk/tr_model.c
+index 9aceb57ce8..24a075b9f0 100644
+--- a/code/renderervk/tr_model.c
++++ b/code/renderervk/tr_model.c
+@@ -393,8 +393,8 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 	md3St_t				*st;
+ 	md3XyzNormal_t		*xyz;
+ 	md3Tag_t			*tag;
+-	int					version;
+-	int					size;
++	uint32_t			version;
++	uint32_t			size, bytesToEnd;
+ 
+ 	pinmodel = (md3Header_t *)buffer;
+ 
+@@ -439,20 +439,16 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+ 		return qfalse;
+ 	}
+-	if ( (unsigned)( hdr->numFrames | hdr->numTags | hdr->numSkins ) > (1 << 20) ) {
+-		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+-		return qfalse;
+-	}
+ 
+-	if ( hdr->ofsFrames + hdr->numFrames * sizeof( md3Frame_t ) > fileSize ) {
++	if ( hdr->numFrames > (size - hdr->ofsFrames) / sizeof( md3Frame_t ) ) {
+ 		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+ 		return qfalse;
+ 	}
+-	if ( hdr->ofsTags + hdr->numTags * hdr->numFrames * sizeof( md3Tag_t ) > fileSize ) {
++	if ( hdr->numTags > (size - hdr->ofsTags) / (sizeof( md3Tag_t ) * hdr->numFrames) ) {
+ 		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+ 		return qfalse;
+ 	}
+-	if ( hdr->ofsSurfaces + ( hdr->numSurfaces ? 1 : 0 ) * sizeof( md3Surface_t ) > fileSize ) {
++	if ( hdr->numSurfaces > (size - hdr->ofsSurfaces) / sizeof( md3Surface_t ) ) {
+ 		ri.Printf( PRINT_WARNING, "%s: %s has corrupted header\n", __func__, mod_name );
+ 		return qfalse;
+ 	}
+@@ -485,6 +481,14 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 	surf = (md3Surface_t *) ( (byte *)hdr + hdr->ofsSurfaces );
+ 	for ( i = 0 ; i < hdr->numSurfaces; i++) {
+ 
++		// how many bytes are remaining before end of file
++		bytesToEnd = size - ((byte*)surf - (byte*)hdr);
++
++		if ( bytesToEnd < sizeof(*surf)) {
++			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
++			return qfalse;
++		}
++
+ 		LL(surf->ident);
+ 		LL(surf->flags);
+ 		LL(surf->numFrames);
+@@ -497,27 +501,24 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 		LL(surf->ofsXyzNormals);
+ 		LL(surf->ofsEnd);
+ 
+-		if ( surf->ofsEnd > fileSize || (((byte*)surf - (byte*)hdr) + surf->ofsEnd) > fileSize ) {
++		if ( surf->ofsTriangles > bytesToEnd || surf->ofsShaders > bytesToEnd || surf->ofsSt > bytesToEnd ||
++			 surf->ofsXyzNormals > bytesToEnd || surf->ofsEnd > bytesToEnd ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+-		if ( surf->ofsTriangles > fileSize || surf->ofsShaders > fileSize || surf->ofsSt > fileSize || surf->ofsXyzNormals > fileSize ) {
++		if ( surf->numTriangles > (bytesToEnd - surf->ofsTriangles) / sizeof( md3Triangle_t ) ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+-		if ( surf->ofsTriangles + surf->numTriangles * sizeof( md3Triangle_t ) > fileSize ) {
++		if ( surf->numShaders > (bytesToEnd - surf->ofsShaders) / sizeof( md3Shader_t ) ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+-		if ( surf->ofsShaders + surf->numShaders * sizeof( md3Shader_t ) > fileSize || surf->numShaders > (1<<20) ) {
++		if ( surf->numVerts > (bytesToEnd - surf->ofsSt) / sizeof( md3St_t ) ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+-		if ( surf->ofsSt + surf->numVerts * sizeof( md3St_t ) > fileSize ) {
+-			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+-			return qfalse;
+-		}
+-		if ( surf->ofsXyzNormals + surf->numVerts * sizeof( md3XyzNormal_t ) > fileSize ) {
++		if ( surf->numVerts > (bytesToEnd - surf->ofsXyzNormals) / sizeof( md3XyzNormal_t ) ) {
+ 			ri.Printf( PRINT_WARNING, "%s: %s has corrupted surface header\n", __func__, mod_name );
+ 			return qfalse;
+ 		}
+@@ -528,7 +529,7 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 				surf->numVerts );
+ 			return qfalse;
+ 		}
+-		if ( surf->numTriangles*3 >= SHADER_MAX_INDEXES ) {
++		if ( surf->numTriangles >= SHADER_MAX_INDEXES / 3 ) {
+ 			ri.Printf(PRINT_WARNING, "%s: %s has more than %i triangles on %s (%i).\n", __func__,
+ 				mod_name, ( SHADER_MAX_INDEXES / 3 ) - 1, surf->name[0] ? surf->name : "a surface",
+ 				surf->numTriangles );
+@@ -573,6 +574,12 @@ static qboolean R_LoadMD3( model_t *mod, int lod, void *buffer, int fileSize, co
+ 			LL(tri->indexes[0]);
+ 			LL(tri->indexes[1]);
+ 			LL(tri->indexes[2]);
++			if (tri->indexes[0] >= surf->numVerts ||
++				tri->indexes[1] >= surf->numVerts ||
++				tri->indexes[2] >= surf->numVerts) {
++				ri.Printf( PRINT_WARNING, "%s: %s has corrupted indexes\n", __func__, mod_name );
++				return qfalse;
++			}
+ 		}
+ 
+ 		// swap all the ST
+
+From 0b71f8ee6791e9463c8c046c0d5476e253038d55 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 01:32:22 +0300
+Subject: [PATCH 08/18] Harden IQM header validity checks.
+
+---
+ code/renderer/tr_model_iqm.c   | 41 ++++++++++++++++++----------------
+ code/renderervk/tr_model_iqm.c | 41 ++++++++++++++++++----------------
+ 2 files changed, 44 insertions(+), 38 deletions(-)
+
+diff --git a/code/renderer/tr_model_iqm.c b/code/renderer/tr_model_iqm.c
+index 43f93ef0f4..aeaf1d9834 100644
+--- a/code/renderer/tr_model_iqm.c
++++ b/code/renderer/tr_model_iqm.c
+@@ -33,15 +33,12 @@ static float identityMatrix[12] = {
+ 	0, 0, 1, 0
+ };
+ 
+-static qboolean IQM_CheckRange( iqmHeader_t *header, int offset,
+-				int count, int size ) {
++static qboolean IQM_CheckRange( iqmHeader_t *header, uint32_t offset,
++				uint32_t count, size_t size ) {
+ 	// return true if the range specified by offset, count and size
+ 	// doesn't fit into the file
+-	return ( count <= 0 ||
+-		 offset <= 0 ||
+-		 offset > header->filesize ||
+-		 offset + count * size < 0 ||
+-		 offset + count * size > header->filesize );
++	return count == 0 || offset == 0 ||
++		(uint64_t)offset + (uint64_t)count * size > header->filesize;
+ }
+ // "multiply" 3x4 matrices, these are assumed to be the top 3 rows
+ // of a 4x4 matrix with the last row = (0 0 0 1)
+@@ -250,6 +247,12 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 		return qfalse;
+ 	}
+ 
++	// check text offset
++	if ( header->num_meshes || header->num_joints ) {
++		if (IQM_CheckRange(header, header->ofs_text, header->num_text, 1))
++			return qfalse;
++	}
++
+ 	for ( i = 0; i < ARRAY_LEN( vertexArrayFormat ); i++ ) {
+ 		vertexArrayFormat[i] = -1;
+ 	}
+@@ -275,15 +278,12 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 				return qfalse;
+ 			}
+ 
+-			// total number of values
+-			n = header->num_vertexes * vertexarray->size;
+-
+ 			switch( vertexarray->format ) {
+ 			case IQM_BYTE:
+ 			case IQM_UBYTE:
+ 				// 1 byte, no swapping necessary
+ 				if( IQM_CheckRange( header, vertexarray->offset,
+-						    n, sizeof(byte) ) ) {
++						    header->num_vertexes, vertexarray->size * sizeof(byte) ) ) {
+ 					return qfalse;
+ 				}
+ 				break;
+@@ -292,9 +292,11 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 			case IQM_FLOAT:
+ 				// 4-byte swap
+ 				if( IQM_CheckRange( header, vertexarray->offset,
+-						    n, sizeof(float) ) ) {
++						    header->num_vertexes, vertexarray->size * sizeof(int) ) ) {
+ 					return qfalse;
+ 				}
++				// total number of values
++				n = header->num_vertexes * vertexarray->size;
+ 				intPtr = (int *)((byte *)header + vertexarray->offset);
+ 				for( j = 0; j < n; j++, intPtr++ ) {
+ 					LL( *intPtr );
+@@ -390,9 +392,9 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 			LL( triangle->vertex[1] );
+ 			LL( triangle->vertex[2] );
+ 
+-			if( triangle->vertex[0] > header->num_vertexes ||
+-			    triangle->vertex[1] > header->num_vertexes ||
+-			    triangle->vertex[2] > header->num_vertexes ) {
++			if( triangle->vertex[0] >= header->num_vertexes ||
++			    triangle->vertex[1] >= header->num_vertexes ||
++			    triangle->vertex[2] >= header->num_vertexes ) {
+ 				return qfalse;
+ 			}
+ 		}
+@@ -424,7 +426,7 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 					  mesh->num_vertexes );
+ 				return qfalse;
+ 			}
+-			if ( mesh->num_triangles*3 >= SHADER_MAX_INDEXES ) {
++			if ( mesh->num_triangles >= SHADER_MAX_INDEXES / 3 ) {
+ 				ri.Printf( PRINT_WARNING, "R_LoadIQM: %s has more than %i triangles on %s (%i).\n",
+ 					  mod_name, ( SHADER_MAX_INDEXES / 3 ) - 1, meshName[0] ? meshName : "a surface",
+ 					  mesh->num_triangles );
+@@ -432,9 +434,9 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 			}
+ 
+ 			if( mesh->first_vertex >= header->num_vertexes ||
+-			    mesh->first_vertex + mesh->num_vertexes > header->num_vertexes ||
+ 			    mesh->first_triangle >= header->num_triangles ||
+-			    mesh->first_triangle + mesh->num_triangles > header->num_triangles ||
++			    mesh->num_vertexes > header->num_vertexes - mesh->first_vertex ||
++			    mesh->num_triangles > header->num_triangles - mesh->first_triangle ||
+ 			    mesh->name >= header->num_text ||
+ 			    mesh->material >= header->num_text ) {
+ 				return qfalse;
+@@ -506,12 +508,13 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 
+ 			if( joint->parent < -1 ||
+ 				joint->parent >= (int)header->num_joints ||
+-				joint->name >= (int)header->num_text ) {
++				joint->name >= header->num_text ) {
+ 				return qfalse;
+ 			}
+ 			joint_names += strlen( (char *)header + header->ofs_text +
+ 						   joint->name ) + 1;
+ 		}
++		joint_names = PAD(joint_names, sizeof(uintptr_t));
+ 	}
+ 
+ 	if ( header->num_poses )
+diff --git a/code/renderervk/tr_model_iqm.c b/code/renderervk/tr_model_iqm.c
+index 06787db10b..9aa76e5d2d 100644
+--- a/code/renderervk/tr_model_iqm.c
++++ b/code/renderervk/tr_model_iqm.c
+@@ -33,15 +33,12 @@ static float identityMatrix[12] = {
+ 	0, 0, 1, 0
+ };
+ 
+-static qboolean IQM_CheckRange( iqmHeader_t *header, int offset,
+-				int count, int size ) {
++static qboolean IQM_CheckRange( iqmHeader_t *header, uint32_t offset,
++				uint32_t count, size_t size ) {
+ 	// return true if the range specified by offset, count and size
+ 	// doesn't fit into the file
+-	return ( count <= 0 ||
+-		 offset <= 0 ||
+-		 offset > header->filesize ||
+-		 offset + count * size < 0 ||
+-		 offset + count * size > header->filesize );
++	return count == 0 || offset == 0 ||
++		(uint64_t)offset + (uint64_t)count * size > header->filesize;
+ }
+ // "multiply" 3x4 matrices, these are assumed to be the top 3 rows
+ // of a 4x4 matrix with the last row = (0 0 0 1)
+@@ -250,6 +247,12 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 		return qfalse;
+ 	}
+ 
++	// check text offset
++	if ( header->num_meshes || header->num_joints ) {
++		if (IQM_CheckRange(header, header->ofs_text, header->num_text, 1))
++			return qfalse;
++	}
++
+ 	for ( i = 0; i < ARRAY_LEN( vertexArrayFormat ); i++ ) {
+ 		vertexArrayFormat[i] = -1;
+ 	}
+@@ -275,15 +278,12 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 				return qfalse;
+ 			}
+ 
+-			// total number of values
+-			n = header->num_vertexes * vertexarray->size;
+-
+ 			switch( vertexarray->format ) {
+ 			case IQM_BYTE:
+ 			case IQM_UBYTE:
+ 				// 1 byte, no swapping necessary
+ 				if( IQM_CheckRange( header, vertexarray->offset,
+-						    n, sizeof(byte) ) ) {
++						    header->num_vertexes, vertexarray->size * sizeof(byte) ) ) {
+ 					return qfalse;
+ 				}
+ 				break;
+@@ -292,9 +292,11 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 			case IQM_FLOAT:
+ 				// 4-byte swap
+ 				if( IQM_CheckRange( header, vertexarray->offset,
+-						    n, sizeof(float) ) ) {
++						    header->num_vertexes, vertexarray->size * sizeof(int) ) ) {
+ 					return qfalse;
+ 				}
++				// total number of values
++				n = header->num_vertexes * vertexarray->size;
+ 				intPtr = (int *)((byte *)header + vertexarray->offset);
+ 				for( j = 0; j < n; j++, intPtr++ ) {
+ 					LL( *intPtr );
+@@ -390,9 +392,9 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 			LL( triangle->vertex[1] );
+ 			LL( triangle->vertex[2] );
+ 
+-			if( triangle->vertex[0] > header->num_vertexes ||
+-			    triangle->vertex[1] > header->num_vertexes ||
+-			    triangle->vertex[2] > header->num_vertexes ) {
++			if( triangle->vertex[0] >= header->num_vertexes ||
++			    triangle->vertex[1] >= header->num_vertexes ||
++			    triangle->vertex[2] >= header->num_vertexes ) {
+ 				return qfalse;
+ 			}
+ 		}
+@@ -424,7 +426,7 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 					  mesh->num_vertexes );
+ 				return qfalse;
+ 			}
+-			if ( mesh->num_triangles*3 >= SHADER_MAX_INDEXES ) {
++			if ( mesh->num_triangles >= SHADER_MAX_INDEXES / 3 ) {
+ 				ri.Printf( PRINT_WARNING, "R_LoadIQM: %s has more than %i triangles on %s (%i).\n",
+ 					  mod_name, ( SHADER_MAX_INDEXES / 3 ) - 1, meshName[0] ? meshName : "a surface",
+ 					  mesh->num_triangles );
+@@ -432,9 +434,9 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 			}
+ 
+ 			if( mesh->first_vertex >= header->num_vertexes ||
+-			    mesh->first_vertex + mesh->num_vertexes > header->num_vertexes ||
+ 			    mesh->first_triangle >= header->num_triangles ||
+-			    mesh->first_triangle + mesh->num_triangles > header->num_triangles ||
++			    mesh->num_vertexes > header->num_vertexes - mesh->first_vertex ||
++			    mesh->num_triangles > header->num_triangles - mesh->first_triangle ||
+ 			    mesh->name >= header->num_text ||
+ 			    mesh->material >= header->num_text ) {
+ 				return qfalse;
+@@ -506,12 +508,13 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
+ 
+ 			if( joint->parent < -1 ||
+ 				joint->parent >= (int)header->num_joints ||
+-				joint->name >= (int)header->num_text ) {
++				joint->name >= header->num_text ) {
+ 				return qfalse;
+ 			}
+ 			joint_names += strlen( (char *)header + header->ofs_text +
+ 						   joint->name ) + 1;
+ 		}
++		joint_names = PAD(joint_names, sizeof(uintptr_t));
+ 	}
+ 
+ 	if ( header->num_poses )
+
+From 3ace56438c5e5e8d26a3284a6e2a0011d33a68b4 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 01:32:26 +0300
+Subject: [PATCH 09/18] Harden BSP structure validity checks.
+
+---
+ code/qcommon/cm_load.c     | 209 +++++++++++++++++++--------
+ code/qcommon/qfiles.h      |   6 +-
+ code/renderer/tr_bsp.c     | 282 ++++++++++++++++++++++++------------
+ code/renderer/tr_world.c   |   2 +-
+ code/renderervk/tr_bsp.c   | 285 ++++++++++++++++++++++++-------------
+ code/renderervk/tr_world.c |   2 +-
+ 6 files changed, 531 insertions(+), 255 deletions(-)
+
+diff --git a/code/qcommon/cm_load.c b/code/qcommon/cm_load.c
+index 58df5c84b8..1f176b46ee 100644
+--- a/code/qcommon/cm_load.c
++++ b/code/qcommon/cm_load.c
+@@ -123,6 +123,7 @@ static void CMod_LoadSubmodels( const lump_t *l ) {
+ 	cmodel_t	*out;
+ 	int			i, j, count;
+ 	int			*indexes;
++	unsigned	firstBrush, numBrushes, firstSurface, numSurfaces;
+ 
+ 	in = (void *)(cmod_base + l->fileofs);
+ 	if (l->filelen % sizeof(*in))
+@@ -132,12 +133,12 @@ static void CMod_LoadSubmodels( const lump_t *l ) {
+ 	if ( count < 1 )
+ 		Com_Error( ERR_DROP, "%s: map with no models", __func__ );
+ 
++	if ( count > MAX_SUBMODELS )
++		Com_Error( ERR_DROP, "%s: MAX_SUBMODELS exceeded", __func__ );
++
+ 	cm.cmodels = Hunk_Alloc( count * sizeof( *cm.cmodels ), h_high );
+ 	cm.numSubModels = count;
+ 
+-	if ( count > MAX_SUBMODELS )
+-		Com_Error( ERR_DROP, "%s: MAX_SUBMODELS exceeded", __func__ );
+-	
+ 	for ( i=0 ; i<count ; i++, in++)
+ 	{
+ 		out = &cm.cmodels[i];
+@@ -152,19 +153,31 @@ static void CMod_LoadSubmodels( const lump_t *l ) {
+ 			continue;	// world model doesn't need other info
+ 		}
+ 
++		firstBrush = LittleLong( in->firstBrush );
++		numBrushes = LittleLong( in->numBrushes );
++		if ( (uint64_t)firstBrush + numBrushes > cm.numBrushes ) {
++			Com_Error( ERR_DROP, "%s: bad brushes", __func__ );
++		}
++
+ 		// make a "leaf" just to hold the model's brushes and surfaces
+-		out->leaf.numLeafBrushes = LittleLong( in->numBrushes );
+-		indexes = Hunk_Alloc( out->leaf.numLeafBrushes * 4, h_high );
++		out->leaf.numLeafBrushes = numBrushes;
++		indexes = Hunk_Alloc( numBrushes * sizeof( *indexes ), h_high );
+ 		out->leaf.firstLeafBrush = indexes - cm.leafbrushes;
+-		for ( j = 0 ; j < out->leaf.numLeafBrushes ; j++ ) {
+-			indexes[j] = LittleLong( in->firstBrush ) + j;
++		for ( j = 0 ; j < numBrushes ; j++ ) {
++			indexes[j] = firstBrush + j;
+ 		}
+ 
+-		out->leaf.numLeafSurfaces = LittleLong( in->numSurfaces );
+-		indexes = Hunk_Alloc( out->leaf.numLeafSurfaces * 4, h_high );
++		firstSurface = LittleLong( in->firstSurface );
++		numSurfaces = LittleLong( in->numSurfaces );
++		if ( (uint64_t)firstSurface + numSurfaces > cm.numSurfaces ) {
++			Com_Error( ERR_DROP, "%s: bad surfaces", __func__ );
++		}
++
++		out->leaf.numLeafSurfaces = numSurfaces;
++		indexes = Hunk_Alloc( numSurfaces * sizeof( *indexes ), h_high );
+ 		out->leaf.firstLeafSurface = indexes - cm.leafsurfaces;
+-		for ( j = 0 ; j < out->leaf.numLeafSurfaces ; j++ ) {
+-			indexes[j] = LittleLong( in->firstSurface ) + j;
++		for ( j = 0 ; j < numSurfaces ; j++ ) {
++			indexes[j] = firstSurface + j;
+ 		}
+ 	}
+ }
+@@ -178,9 +191,9 @@ CMod_LoadNodes
+ */
+ static void CMod_LoadNodes( const lump_t *l ) {
+ 	dnode_t	*in;
+-	int		child;
+ 	cNode_t	*out;
+ 	int		i, j, count;
++	unsigned child, num;
+ 
+ 	in = (dnode_t *)(cmod_base + l->fileofs);
+ 	if (l->filelen % sizeof(*in))
+@@ -197,10 +210,21 @@ static void CMod_LoadNodes( const lump_t *l ) {
+ 
+ 	for ( i = 0; i < count; i++, out++, in++ )
+ 	{
+-		out->plane = cm.planes + LittleLong( in->planeNum );
++		num = LittleLong( in->planeNum );
++		if ( num >= cm.numPlanes )
++			Com_Error( ERR_DROP, "%s: bad planeNum", __func__ );
++
++		out->plane = cm.planes + num;
+ 		for ( j = 0; j < 2; j++ )
+ 		{
+ 			child = LittleLong( in->children[j] );
++			if ( child & 0x80000000 ) {
++				if ( ~child >= cm.numLeafs )
++					Com_Error( ERR_DROP, "%s: bad leaf", __func__ );
++			} else {
++				if ( child >= count )
++					Com_Error( ERR_DROP, "%s: bad node", __func__ );
++			}
+ 			out->children[j] = child;
+ 		}
+ 	}
+@@ -235,6 +259,7 @@ static void CMod_LoadBrushes( const lump_t *l ) {
+ 	dbrush_t	*in;
+ 	cbrush_t	*out;
+ 	int			i, count;
++	unsigned	firstSide, numSides;
+ 
+ 	in = (void *)(cmod_base + l->fileofs);
+ 	if ( l->filelen % sizeof(*in) )
+@@ -248,8 +273,13 @@ static void CMod_LoadBrushes( const lump_t *l ) {
+ 	out = cm.brushes;
+ 
+ 	for ( i = 0; i < count; i++, out++, in++ ) {
+-		out->sides = cm.brushsides + LittleLong( in->firstSide );
+-		out->numsides = LittleLong( in->numSides );
++		firstSide = LittleLong( in->firstSide );
++		numSides = LittleLong( in->numSides );
++		if ( (uint64_t)firstSide + numSides > cm.numBrushSides )
++			Com_Error( ERR_DROP, "%s: bad brushsides", __func__ );
++
++		out->sides = cm.brushsides + firstSide;
++		out->numsides = numSides;
+ 
+ 		out->shaderNum = LittleLong( in->shaderNum );
+ 		if ( out->shaderNum < 0 || out->shaderNum >= cm.numShaders ) {
+@@ -274,6 +304,7 @@ static void CMod_LoadLeafs( const lump_t *l )
+ 	cLeaf_t		*out;
+ 	dleaf_t 	*in;
+ 	int			count;
++	unsigned	firstLeafBrush, numLeafBrushes, firstLeafSurface, numLeafSurfaces;
+ 
+ 	in = (void *)(cmod_base + l->fileofs);
+ 	if ( l->filelen % sizeof(*in) )
+@@ -290,11 +321,28 @@ static void CMod_LoadLeafs( const lump_t *l )
+ 	for ( i = 0; i < count; i++, in++, out++ )
+ 	{
+ 		out->cluster = LittleLong( in->cluster );
++		if ( out->cluster + 1U > INT_MAX - 31U )
++			Com_Error( ERR_DROP, "%s: bad cluster", __func__ );
++
+ 		out->area = LittleLong( in->area );
+-		out->firstLeafBrush = LittleLong( in->firstLeafBrush );
+-		out->numLeafBrushes = LittleLong( in->numLeafBrushes );
+-		out->firstLeafSurface = LittleLong( in->firstLeafSurface );
+-		out->numLeafSurfaces = LittleLong( in->numLeafSurfaces );
++		if ( out->area + 1U > MAX_MAP_AREAS )
++			Com_Error( ERR_DROP, "%s: bad area", __func__ );
++
++		firstLeafBrush = LittleLong( in->firstLeafBrush );
++		numLeafBrushes = LittleLong( in->numLeafBrushes );
++		if ( (uint64_t)firstLeafBrush + numLeafBrushes > cm.numLeafBrushes )
++			Com_Error( ERR_DROP, "%s: bad leafbrushes", __func__ );
++
++		out->firstLeafBrush = firstLeafBrush;
++		out->numLeafBrushes = numLeafBrushes;
++
++		firstLeafSurface = LittleLong( in->firstLeafSurface );
++		numLeafSurfaces = LittleLong( in->numLeafSurfaces );
++		if ( (uint64_t)firstLeafSurface + numLeafSurfaces > cm.numLeafSurfaces )
++			Com_Error( ERR_DROP, "%s: bad leafsurfaces", __func__ );
++
++		out->firstLeafSurface = firstLeafSurface;
++		out->numLeafSurfaces = numLeafSurfaces;
+ 
+ 		if ( out->cluster >= cm.numClusters )
+ 			cm.numClusters = out->cluster + 1;
+@@ -374,7 +422,10 @@ static void CMod_LoadLeafBrushes( const lump_t *l )
+ 	out = cm.leafbrushes;
+ 
+ 	for ( i = 0; i < count; i++, in++, out++ ) {
+-		*out = LittleLong( *in );
++		unsigned j = LittleLong( *in );
++		if ( j >= cm.numBrushes )
++			Com_Error( ERR_DROP, "%s: bad brush", __func__ );
++		*out = j;
+ 	}
+ }
+ 
+@@ -403,25 +454,10 @@ static void CMod_LoadLeafSurfaces( const lump_t *l )
+ 	out = cm.leafsurfaces;
+ 
+ 	for ( i = 0; i < count; i++, in++, out++ ) {
+-		*out = LittleLong( *in );
+-	}
+-}
+-
+-
+-/*
+-=================
+-CMod_CheckLeafBrushes
+-=================
+-*/
+-static void CMod_CheckLeafBrushes( void )
+-{
+-	int	i;
+-
+-	for ( i = 0; i < cm.numLeafBrushes; i++ ) {
+-		if ( cm.leafbrushes[ i ] < 0 || cm.leafbrushes[ i ] >= cm.numBrushes ) {
+-			Com_DPrintf( S_COLOR_YELLOW "[%i] invalid leaf brush %08x\n", i, cm.leafbrushes[i] );
+-			cm.leafbrushes[ i ] = 0;
+-		}
++		unsigned j = LittleLong( *in );
++		if ( j >= cm.numSurfaces )
++			Com_Error( ERR_DROP, "%s: bad surface", __func__ );
++		*out = j;
+ 	}
+ }
+ 
+@@ -437,7 +473,7 @@ static void CMod_LoadBrushSides( const lump_t *l )
+ 	cbrushside_t	*out;
+ 	dbrushside_t	*in;
+ 	int				count;
+-	int				num;
++	unsigned		num;
+ 
+ 	in = (dbrushside_t *)(cmod_base + l->fileofs);
+ 	if ( l->filelen % sizeof(*in) ) {
+@@ -452,6 +488,9 @@ static void CMod_LoadBrushSides( const lump_t *l )
+ 
+ 	for ( i= 0; i < count; i++, in++, out++ ) {
+ 		num = LittleLong( in->planeNum );
++		if ( num >= cm.numPlanes ) {
++			Com_Error( ERR_DROP, "%s: bad planeNum", __func__ );
++		}
+ 		out->plane = &cm.planes[num];
+ 		out->shaderNum = LittleLong( in->shaderNum );
+ 		if ( out->shaderNum < 0 || out->shaderNum >= cm.numShaders ) {
+@@ -468,9 +507,10 @@ CMod_LoadEntityString
+ =================
+ */
+ static void CMod_LoadEntityString( const lump_t *l ) {
+-	cm.entityString = Hunk_Alloc( l->filelen, h_high );
++	cm.entityString = Hunk_Alloc( l->filelen + 1, h_high );
+ 	cm.numEntityChars = l->filelen;
+ 	Com_Memcpy( cm.entityString, cmod_base + l->fileofs, l->filelen );
++	cm.entityString[l->filelen] = 0;
+ }
+ 
+ 
+@@ -479,9 +519,8 @@ static void CMod_LoadEntityString( const lump_t *l ) {
+ CMod_LoadVisibility
+ =================
+ */
+-#define	VIS_HEADER	8
+ static void CMod_LoadVisibility( const lump_t *l ) {
+-	int		len;
++	unsigned numClusters, clusterBytes, len;
+ 	byte	*buf;
+ 
+ 	len = l->filelen;
+@@ -491,18 +530,37 @@ static void CMod_LoadVisibility( const lump_t *l ) {
+ 		Com_Memset( cm.visibility, 255, cm.clusterBytes );
+ 		return;
+ 	}
++
++	if ( len < VIS_HEADER ) {
++		Com_Error( ERR_DROP, "%s: lump too short", __func__ );
++	}
++
+ 	buf = cmod_base + l->fileofs;
++	numClusters = LittleLong( ((int *)buf)[0] );
++	clusterBytes = LittleLong( ((int *)buf)[1] );
++
++	buf += VIS_HEADER;
++	len -= VIS_HEADER;
++
++	if ( (uint64_t)numClusters * clusterBytes > len ) {
++		Com_Error( ERR_DROP, "%s: lump too short", __func__ );
++	}
++	if ( numClusters < cm.numClusters ) {
++		Com_Error( ERR_DROP, "%s: bad numClusters", __func__ );
++	}
++	if ( clusterBytes < (numClusters + 7) >> 3 ) {
++		Com_Error( ERR_DROP, "%s: bad clusterBytes", __func__ );
++	}
+ 
+ 	cm.vised = qtrue;
+ 	cm.visibility = Hunk_Alloc( len, h_high );
+-	cm.numClusters = LittleLong( ((int *)buf)[0] );
+-	cm.clusterBytes = LittleLong( ((int *)buf)[1] );
+-	Com_Memcpy (cm.visibility, buf + VIS_HEADER, len - VIS_HEADER );
++	cm.numClusters = numClusters;
++	cm.clusterBytes = clusterBytes;
++	Com_Memcpy( cm.visibility, buf, len );
+ }
+ 
+ //==================================================================
+ 
+-
+ /*
+ =================
+ CMod_LoadPatches
+@@ -514,11 +572,11 @@ static void CMod_LoadPatches( const lump_t *surfs, const lump_t *verts ) {
+ 	dsurface_t	*in;
+ 	int			count;
+ 	int			i, j;
+-	int			c;
++	unsigned	firstVert, numVerts, totalVerts;
+ 	cPatch_t	*patch;
+ 	vec3_t		points[MAX_PATCH_VERTS];
+-	int			width, height;
+-	int			shaderNum;
++	unsigned	width, height;
++	unsigned	shaderNum;
+ 
+ 	in = (void *)(cmod_base + surfs->fileofs);
+ 	if (surfs->filelen % sizeof(*in))
+@@ -530,6 +588,7 @@ static void CMod_LoadPatches( const lump_t *surfs, const lump_t *verts ) {
+ 	dv = (void *)(cmod_base + verts->fileofs);
+ 	if (verts->filelen % sizeof(*dv))
+ 		Com_Error( ERR_DROP, "%s: funny lump size", __func__ );
++	totalVerts = verts->filelen / sizeof(*dv);
+ 
+ 	// scan through all the surfaces, but only load patches,
+ 	// not planar faces
+@@ -544,19 +603,27 @@ static void CMod_LoadPatches( const lump_t *surfs, const lump_t *verts ) {
+ 		// load the full drawverts onto the stack
+ 		width = LittleLong( in->patchWidth );
+ 		height = LittleLong( in->patchHeight );
+-		c = width * height;
+-		if ( c > MAX_PATCH_VERTS ) {
++		if ( (uint64_t)width * height > MAX_PATCH_VERTS ) {
+ 			Com_Error( ERR_DROP, "%s: MAX_PATCH_VERTS", __func__ );
+ 		}
+ 
+-		dv_p = dv + LittleLong( in->firstVert );
+-		for ( j = 0 ; j < c ; j++, dv_p++ ) {
++		firstVert = LittleLong( in->firstVert );
++		numVerts = width * height;
++		if ( (uint64_t)firstVert + numVerts > totalVerts ) {
++			Com_Error( ERR_DROP, "%s: bad firstVert", __func__ );
++		}
++
++		dv_p = dv + firstVert;
++		for ( j = 0 ; j < numVerts ; j++, dv_p++ ) {
+ 			points[j][0] = LittleFloat( dv_p->xyz[0] );
+ 			points[j][1] = LittleFloat( dv_p->xyz[1] );
+ 			points[j][2] = LittleFloat( dv_p->xyz[2] );
+ 		}
+ 
+ 		shaderNum = LittleLong( in->shaderNum );
++		if ( shaderNum >= cm.numShaders ) {
++			Com_Error( ERR_DROP, "%s: bad shaderNum", __func__ );
++		}
+ 		patch->contents = cm.shaders[shaderNum].contentFlags;
+ 		patch->surfaceFlags = cm.shaders[shaderNum].surfaceFlags;
+ 
+@@ -593,6 +660,23 @@ static uint32_t CM_Checksum( const dheader_t *header ) {
+ }
+ #endif
+ 
++static void CM_ValidateTree_r( byte *visited, int node ) {
++	while ( node >= 0 ) {
++		if ( visited[node] )
++			Com_Error( ERR_DROP, "%s: cycle encountered", __func__ );
++		visited[node] = 1;
++		CM_ValidateTree_r( visited, cm.nodes[node].children[0] );
++		node = cm.nodes[node].children[1];
++	}
++}
++
++static void CM_ValidateTree( void ) {
++	byte *visited = Hunk_AllocateTempMemory( cm.numNodes );
++	memset( visited, 0, cm.numNodes );
++	CM_ValidateTree_r( visited, 0 );
++	Hunk_FreeTempMemory( visited );
++}
++
+ 
+ /*
+ ==================
+@@ -669,34 +753,39 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
+ 	}
+ 
+ 	for ( i = 0; i < HEADER_LUMPS; i++ ) {
+-		int32_t ofs = header.lumps[i].fileofs;
+-		int32_t len = header.lumps[i].filelen;
+-		if ( (uint32_t)ofs > MAX_QINT || (uint32_t)len > MAX_QINT || ofs + len > length || ofs + len <  0 ) {
++		uint32_t ofs = header.lumps[i].fileofs;
++		uint32_t len = header.lumps[i].filelen;
++		if ( (uint64_t)ofs + len > length ) {
+ 			Com_Error( ERR_DROP, "%s: %s has wrong lump[%i] size/offset", __func__, name, i );
+ 		}
+ 	}
+ 
+ 	cmod_base = (byte *)buf;
+ 
++	// pre-calculate some stuff
++	cm.numBrushes = header.lumps[LUMP_BRUSHES].filelen / sizeof(dbrush_t);
++	cm.numSurfaces = header.lumps[LUMP_SURFACES].filelen / sizeof(dsurface_t);
++
+ 	// load into heap
+ 	CMod_LoadShaders( &header.lumps[LUMP_SHADERS] );
+-	CMod_LoadLeafs (&header.lumps[LUMP_LEAFS]);
+ 	CMod_LoadLeafBrushes (&header.lumps[LUMP_LEAFBRUSHES]);
+ 	CMod_LoadLeafSurfaces (&header.lumps[LUMP_LEAFSURFACES]);
+ 	CMod_LoadPlanes (&header.lumps[LUMP_PLANES]);
+ 	CMod_LoadBrushSides (&header.lumps[LUMP_BRUSHSIDES]);
+ 	CMod_LoadBrushes (&header.lumps[LUMP_BRUSHES]);
+ 	CMod_LoadSubmodels (&header.lumps[LUMP_MODELS]);
++	CMod_LoadLeafs (&header.lumps[LUMP_LEAFS]);
+ 	CMod_LoadNodes (&header.lumps[LUMP_NODES]);
+ 	CMod_LoadEntityString (&header.lumps[LUMP_ENTITIES]);
+ 	CMod_LoadVisibility( &header.lumps[LUMP_VISIBILITY] );
+ 	CMod_LoadPatches( &header.lumps[LUMP_SURFACES], &header.lumps[LUMP_DRAWVERTS] );
+ 
+-	CMod_CheckLeafBrushes();
+-
+ 	// we are NOT freeing the file, because it is cached for the ref
+ 	FS_FreeFile( buf );
+ 
++	// check for cycles so we don't overflow stack
++	CM_ValidateTree();
++
+ 	CM_InitBoxHull();
+ 
+ 	CM_FloodAreaConnections();
+diff --git a/code/qcommon/qfiles.h b/code/qcommon/qfiles.h
+index a558166f9c..c3e75bba4b 100644
+--- a/code/qcommon/qfiles.h
++++ b/code/qcommon/qfiles.h
+@@ -350,12 +350,14 @@ typedef struct {
+ #define MIN_WORLD_COORD		( -128*1024 )
+ #define WORLD_SIZE			( MAX_WORLD_COORD - MIN_WORLD_COORD )
+ 
++#define VIS_HEADER			8
++
+ //=============================================================================
+ 
+ 
+ typedef struct {
+-	int32_t fileofs;
+-	int32_t filelen;
++	uint32_t fileofs;
++	uint32_t filelen;
+ } lump_t;
+ 
+ #define	LUMP_ENTITIES		0
+diff --git a/code/renderer/tr_bsp.c b/code/renderer/tr_bsp.c
+index 28214facd3..fb0d1c074a 100644
+--- a/code/renderer/tr_bsp.c
++++ b/code/renderer/tr_bsp.c
+@@ -485,7 +485,7 @@ R_LoadVisibility
+ =================
+ */
+ static void R_LoadVisibility( const lump_t *l ) {
+-	int		len;
++	unsigned numClusters, clusterBytes, len;
+ 	byte	*buf;
+ 
+ 	len = PAD( s_worldData.numClusters, 64 );
+@@ -496,10 +496,30 @@ static void R_LoadVisibility( const lump_t *l ) {
+ 	if ( !len ) {
+ 		return;
+ 	}
++
++	if ( len < VIS_HEADER ) {
++		Com_Error( ERR_DROP, "%s: lump too short", __func__ );
++	}
++
+ 	buf = fileBase + l->fileofs;
++	numClusters = LittleLong( ((int *)buf)[0] );
++	clusterBytes = LittleLong( ((int *)buf)[1] );
++
++	buf += VIS_HEADER;
++	len -= VIS_HEADER;
++
++	if ( (uint64_t)numClusters * clusterBytes > len ) {
++		Com_Error( ERR_DROP, "%s: lump too short", __func__ );
++	}
++	if ( numClusters < s_worldData.numClusters ) {
++		Com_Error( ERR_DROP, "%s: bad numClusters", __func__ );
++	}
++	if ( clusterBytes < (numClusters + 7) >> 3 ) {
++		Com_Error( ERR_DROP, "%s: bad clusterBytes", __func__ );
++	}
+ 
+-	s_worldData.numClusters = LittleLong( ((int *)buf)[0] );
+-	s_worldData.clusterBytes = LittleLong( ((int *)buf)[1] );
++	s_worldData.numClusters = numClusters;
++	s_worldData.clusterBytes = clusterBytes;
+ 
+ 	// CM_Load should have given us the vis data to share, so
+ 	// we don't need to allocate another copy
+@@ -508,8 +528,8 @@ static void R_LoadVisibility( const lump_t *l ) {
+ 	} else {
+ 		byte	*dest;
+ 
+-		dest = ri.Hunk_Alloc( len - 8, h_low );
+-		Com_Memcpy( dest, buf + 8, len - 8 );
++		dest = ri.Hunk_Alloc( len, h_low );
++		Com_Memcpy( dest, buf, len );
+ 		s_worldData.vis = dest;
+ 	}
+ }
+@@ -603,15 +623,13 @@ static void GenerateNormals( srfSurfaceFace_t *face )
+ ParseFace
+ ===============
+ */
+-static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t *surf, int *indexes ) {
++static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, int numPoints, msurface_t *surf, int *srcIndexes, int numIndexes ) {
+ 	int			i, j;
+ 	srfSurfaceFace_t	*cv;
+-	int			numPoints, numIndexes;
++	int			*indexes;
+ 	int			lightmapNum;
+ 	float		lightmapX, lightmapY;
+ 	int			sfaceSize, ofsIndexes;
+-	// get fog volume
+-	surf->fogIndex = LittleLong( ds->fogNum ) + 1;
+ 
+ 	lightmapNum = LittleLong( ds->lightmapNum );
+ 	if ( lightmapNum >= 0 && tr.mergeLightmaps ) {
+@@ -626,15 +644,12 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	// get shader value
+ 	surf->shader = ShaderForShaderNum( LittleLong( ds->shaderNum ), lightmapNum );
+ 
+-	numPoints = LittleLong( ds->numVerts );
+ 	if (numPoints > MAX_FACE_POINTS) {
+ 		ri.Printf( PRINT_WARNING, "WARNING: MAX_FACE_POINTS exceeded: %i\n", numPoints);
+ 		numPoints = MAX_FACE_POINTS;
+ 		surf->shader = tr.defaultShader;
+ 	}
+ 
+-	numIndexes = LittleLong( ds->numIndexes );
+-
+ 	// create the srfSurfaceFace_t
+ 	sfaceSize = sizeof( *cv ) - sizeof( cv->points ) + sizeof( cv->points[0] ) * numPoints;
+ 	ofsIndexes = sfaceSize;
+@@ -646,7 +661,6 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	cv->numIndices = numIndexes;
+ 	cv->ofsIndices = ofsIndexes;
+ 
+-	verts += LittleLong( ds->firstVert );
+ 	for ( i = 0 ; i < numPoints ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			cv->points[i][j] = LittleFloat( verts[i].xyz[j] );
+@@ -663,9 +677,13 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 		}
+ 	}
+ 
+-	indexes += LittleLong( ds->firstIndex );
++	indexes = (int*)((byte *) cv + cv->ofsIndices);
++
+ 	for ( i = 0 ; i < numIndexes ; i++ ) {
+-		((int *)((byte *)cv + cv->ofsIndices ))[i] = LittleLong( indexes[ i ] );
++		unsigned num = LittleLong( srcIndexes[ i ] );
++		if ( num >= numPoints )
++			ri.Error( ERR_DROP, "%s: bad index", __func__ );
++		indexes[i] = num;
+ 	}
+ 
+ 	// take the plane information from the lightmap vector
+@@ -707,10 +725,10 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ ParseMesh
+ ===============
+ */
+-static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t *surf ) {
++static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, int numVerts, msurface_t *surf ) {
+ 	srfGridMesh_t	*grid;
+ 	int				i, j;
+-	int				width, height, numPoints;
++	unsigned		width, height, numPoints;
+ 	drawVert_t points[MAX_PATCH_SIZE*MAX_PATCH_SIZE];
+ 	int				lightmapNum;
+ 	float			lightmapX, lightmapY;
+@@ -718,9 +736,6 @@ static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	vec3_t			tmpVec;
+ 	static surfaceType_t	skipData = SF_SKIP;
+ 
+-	// get fog volume
+-	surf->fogIndex = LittleLong( ds->fogNum ) + 1;
+-
+ 	lightmapNum = LittleLong( ds->lightmapNum );
+ 	if ( lightmapNum >= 0 && tr.mergeLightmaps ) {
+ 		lightmapNum = R_GetLightmapCoords( lightmapNum, &lightmapX, &lightmapY );
+@@ -744,8 +759,16 @@ static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	width = LittleLong( ds->patchWidth );
+ 	height = LittleLong( ds->patchHeight );
+ 
+-	verts += LittleLong( ds->firstVert );
++	// mirror CM_GeneratePatchCollide() checks
++	if (width <= 2 || height <= 2 || !(width & 1) || !(height & 1) ||
++		width > MAX_GRID_SIZE || height > MAX_GRID_SIZE ||
++		width * height > ARRAY_LEN(points))
++		ri.Error( ERR_DROP, "%s: bad patch size", __func__ );
++
+ 	numPoints = width * height;
++	if (numPoints > numVerts)
++		ri.Error( ERR_DROP, "%s: verts out of range", __func__ );
++
+ 	for ( i = 0 ; i < numPoints ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			points[i].xyz[j] = LittleFloat( verts[i].xyz[j] );
+@@ -786,16 +809,12 @@ static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ ParseTriSurf
+ ===============
+ */
+-static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurface_t *surf, int *indexes ) {
++static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, int numVerts, msurface_t *surf, int *indexes, int numIndexes ) {
+ 	srfTriangles_t	*tri;
+ 	int				i, j;
+-	int				numVerts, numIndexes;
+ 	int				lightmapNum;
+ 	float			lightmapX, lightmapY;
+ 
+-	// get fog volume
+-	surf->fogIndex = LittleLong( ds->fogNum ) + 1;
+-
+ 	lightmapNum = LittleLong( ds->lightmapNum );
+ 	if ( lightmapNum >= 0 && tr.mergeLightmaps ) {
+ 		lightmapNum = R_GetLightmapCoords( lightmapNum, &lightmapX, &lightmapY );
+@@ -809,9 +828,6 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ 	// get shader
+ 	surf->shader = ShaderForShaderNum( LittleLong( ds->shaderNum ), LIGHTMAP_BY_VERTEX );
+ 
+-	numVerts = LittleLong( ds->numVerts );
+-	numIndexes = LittleLong( ds->numIndexes );
+-
+ 	tri = ri.Hunk_Alloc( sizeof( *tri ) + numVerts * sizeof( tri->verts[0] ) 
+ 		+ numIndexes * sizeof( tri->indexes[0] ), h_low );
+ 	tri->surfaceType = SF_TRIANGLES;
+@@ -824,7 +840,6 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ 
+ 	// copy vertexes
+ 	ClearBounds( tri->bounds[0], tri->bounds[1] );
+-	verts += LittleLong( ds->firstVert );
+ 	for ( i = 0 ; i < numVerts ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			tri->verts[i].xyz[j] = LittleFloat( verts[i].xyz[j] );
+@@ -845,7 +860,6 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ 	}
+ 
+ 	// copy indexes
+-	indexes += LittleLong( ds->firstIndex );
+ 	for ( i = 0 ; i < numIndexes ; i++ ) {
+ 		tri->indexes[i] = LittleLong( indexes[i] );
+ 		if ( tri->indexes[i] < 0 || tri->indexes[i] >= numVerts ) {
+@@ -860,13 +874,10 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ ParseFlare
+ ===============
+ */
+-static void ParseFlare( const dsurface_t *ds, const drawVert_t *verts, msurface_t *surf, int *indexes ) {
++static void ParseFlare( const dsurface_t *ds, msurface_t *surf ) {
+ 	srfFlare_t		*flare;
+ 	int				i;
+ 
+-	// get fog volume
+-	surf->fogIndex = LittleLong( ds->fogNum ) + 1;
+-
+ 	// get shader
+ 	surf->shader = ShaderForShaderNum( LittleLong( ds->shaderNum ), LIGHTMAP_BY_VERTEX );
+ 
+@@ -1603,8 +1614,9 @@ static void R_LoadSurfaces( const lump_t *surfs, const lump_t *verts, const lump
+ 	msurface_t	*out;
+ 	const drawVert_t *dv;
+ 	int			*indexes;
+-	int			count;
++	int			count, totalVerts, totalIndexes;
+ 	int			numFaces, numMeshes, numTriSurfs, numFlares;
++	unsigned	firstVert, numVerts, firstIndex, numIndexes;
+ 	int			i;
+ 
+ 	numFaces = 0;
+@@ -1620,36 +1632,77 @@ static void R_LoadSurfaces( const lump_t *surfs, const lump_t *verts, const lump
+ 	dv = (void *)(fileBase + verts->fileofs);
+ 	if (verts->filelen % sizeof(*dv))
+ 		ri.Error( ERR_DROP, "%s(): funny lump size in %s", __func__, s_worldData.name );
++	totalVerts = verts->filelen / sizeof(*dv);
+ 
+ 	indexes = (void *)(fileBase + indexLump->fileofs);
+ 	if ( indexLump->filelen % sizeof(*indexes))
+ 		ri.Error( ERR_DROP, "%s(): funny lump size in %s", __func__, s_worldData.name );
++	totalIndexes = indexLump->filelen / sizeof(*indexes);
+ 
+ 	out = ri.Hunk_Alloc( count * sizeof(*out), h_low );
+ 
+ 	s_worldData.surfaces = out;
+ 	s_worldData.numsurfaces = count;
+ 
++	// shut up compiler
++	firstVert = numVerts = 0;
++	firstIndex = numIndexes = 0;
++
+ 	for ( i = 0 ; i < count ; i++, in++, out++ ) {
+-		switch ( LittleLong( in->surfaceType ) ) {
++		unsigned type = LittleLong( in->surfaceType );
++		unsigned fogIndex;
++
++		if ( type != MST_FLARE ) {
++			firstVert = LittleLong( in->firstVert );
++			if ( type == MST_PATCH )
++				numVerts = 0;	// use patch size
++			else
++				numVerts = LittleLong( in->numVerts );
++			if ( (uint64_t)firstVert + numVerts > totalVerts )
++				ri.Error( ERR_DROP, "%s: bad verts", __func__ );
++
++			if ( type != MST_PATCH ) {
++				firstIndex = LittleLong( in->firstIndex );
++				numIndexes = LittleLong( in->numIndexes );
++				if ( (uint64_t)firstIndex + numIndexes > totalIndexes )
++					ri.Error( ERR_DROP, "%s: bad indexes", __func__ );
++
++				// don't allow partial triangles
++				if ( numIndexes % 3 ) {
++					ri.Printf( PRINT_WARNING, "%s: odd number of indexes: %u\n", __func__, numIndexes );
++					numIndexes -= numIndexes % 3;
++				}
++			}
++		}
++
++		// get fog volume
++		fogIndex = LittleLong( in->fogNum ) + 1U;
++		if ( fogIndex >= s_worldData.numfogs ) {
++			if ( type != MST_FLARE )
++				ri.Printf( PRINT_WARNING, "%s: bad fog index: %u\n", __func__, fogIndex );
++			fogIndex = 0;
++		}
++		out->fogIndex = fogIndex;
++
++		switch ( type ) {
+ 		case MST_PATCH:
+-			ParseMesh( in, dv, out );
++			ParseMesh( in, dv + firstVert, totalVerts - firstVert, out );
+ 			numMeshes++;
+ 			break;
+ 		case MST_TRIANGLE_SOUP:
+-			ParseTriSurf( in, dv, out, indexes );
++			ParseTriSurf( in, dv + firstVert, numVerts, out, indexes + firstIndex, numIndexes );
+ 			numTriSurfs++;
+ 			break;
+ 		case MST_PLANAR:
+-			ParseFace( in, dv, out, indexes );
++			ParseFace( in, dv + firstVert, numVerts, out, indexes + firstIndex, numIndexes );
+ 			numFaces++;
+ 			break;
+ 		case MST_FLARE:
+-			ParseFlare( in, dv, out, indexes );
++			ParseFlare( in, out );
+ 			numFlares++;
+ 			break;
+ 		default:
+-			ri.Error( ERR_DROP, "Bad surfaceType %i", LittleLong( in->surfaceType ) );
++			ri.Error( ERR_DROP, "%s: bad surfaceType: %u", __func__, type );
+ 		}
+ 	}
+ 
+@@ -1677,6 +1730,7 @@ static void R_LoadSubmodels( const lump_t *l ) {
+ 	const dmodel_t *in;
+ 	bmodel_t	*out;
+ 	int			i, j, count;
++	unsigned	firstSurface, numSurfaces;
+ 
+ 	in = (void *)(fileBase + l->fileofs);
+ 	if (l->filelen % sizeof(*in))
+@@ -1703,8 +1757,14 @@ static void R_LoadSubmodels( const lump_t *l ) {
+ 			out->bounds[1][j] = LittleFloat (in->maxs[j]);
+ 		}
+ 
+-		out->firstSurface = s_worldData.surfaces + LittleLong( in->firstSurface );
+-		out->numSurfaces = LittleLong( in->numSurfaces );
++		firstSurface = LittleLong( in->firstSurface );
++		numSurfaces = LittleLong( in->numSurfaces );
++		if ( (uint64_t)firstSurface + numSurfaces > s_worldData.numsurfaces ) {
++			ri.Error( ERR_DROP, "%s: bad surfaces", __func__ );
++		}
++
++		out->firstSurface = s_worldData.surfaces + firstSurface;
++		out->numSurfaces = numSurfaces;
+ 	}
+ }
+ 
+@@ -1719,6 +1779,8 @@ R_SetParent
+ */
+ static void R_SetParent( mnode_t *node, mnode_t *parent )
+ {
++	if ( node->parent )
++		ri.Error( ERR_DROP, "%s: cycle encountered", __func__ );
+ 	node->parent = parent;
+ 	if ( node->contents != CONTENTS_NODE )
+ 		return;
+@@ -1733,7 +1795,8 @@ R_LoadNodesAndLeafs
+ =================
+ */
+ static void R_LoadNodesAndLeafs( const lump_t *nodeLump, const lump_t *leafLump ) {
+-	int			i, j, p;
++	int			i, j;
++	unsigned	p, firstmarksurface, nummarksurfaces;
+ 	const dnode_t		*in;
+ 	dleaf_t		*inLeaf;
+ 	mnode_t 	*out;
+@@ -1763,6 +1826,9 @@ static void R_LoadNodesAndLeafs( const lump_t *nodeLump, const lump_t *leafLump
+ 		}
+ 	
+ 		p = LittleLong(in->planeNum);
++		if ( p >= s_worldData.numplanes ) {
++			ri.Error( ERR_DROP, "%s: bad planeNum", __func__ );
++		}
+ 		out->plane = s_worldData.planes + p;
+ 
+ 		out->contents = CONTENTS_NODE;	// differentiate from leafs
+@@ -1770,10 +1836,18 @@ static void R_LoadNodesAndLeafs( const lump_t *nodeLump, const lump_t *leafLump
+ 		for (j=0 ; j<2 ; j++)
+ 		{
+ 			p = LittleLong (in->children[j]);
+-			if (p >= 0)
++			if (p & 0x80000000) {
++				p = ~p;
++				if ( p >= numLeafs ) {
++					ri.Error( ERR_DROP, "%s: bad leaf", __func__ );
++				}
++				out->children[j] = s_worldData.nodes + numNodes + p;
++			} else {
++				if ( p >= numNodes ) {
++					ri.Error( ERR_DROP, "%s: bad node", __func__ );
++				}
+ 				out->children[j] = s_worldData.nodes + p;
+-			else
+-				out->children[j] = s_worldData.nodes + numNodes + (-1 - p);
++			}
+ 		}
+ 	}
+ 	
+@@ -1788,15 +1862,25 @@ static void R_LoadNodesAndLeafs( const lump_t *nodeLump, const lump_t *leafLump
+ 		}
+ 
+ 		out->cluster = LittleLong(inLeaf->cluster);
++		if ( out->cluster + 1U > INT_MAX - 63U )
++			Com_Error( ERR_DROP, "%s: bad cluster", __func__ );
++
+ 		out->area = LittleLong(inLeaf->area);
++		if ( out->area + 1U > MAX_MAP_AREAS )
++			Com_Error( ERR_DROP, "%s: bad area", __func__ );
+ 
+ 		if ( out->cluster >= s_worldData.numClusters ) {
+ 			s_worldData.numClusters = out->cluster + 1;
+ 		}
+ 
+-		out->firstmarksurface = s_worldData.marksurfaces +
+-			LittleLong(inLeaf->firstLeafSurface);
+-		out->nummarksurfaces = LittleLong(inLeaf->numLeafSurfaces);
++		firstmarksurface = LittleLong(inLeaf->firstLeafSurface);
++		nummarksurfaces = LittleLong(inLeaf->numLeafSurfaces);
++		if ( (uint64_t)firstmarksurface + nummarksurfaces > s_worldData.nummarksurfaces ) {
++			ri.Error( ERR_DROP, "%s: bad marksurfaces", __func__ );
++		}
++
++		out->firstmarksurface = s_worldData.marksurfaces + firstmarksurface;
++		out->nummarksurfaces = nummarksurfaces;
+ 	}	
+ 
+ 	// chain descendants
+@@ -1861,7 +1945,8 @@ R_LoadMarksurfaces
+ */
+ static void R_LoadMarksurfaces( const lump_t *l )
+ {	
+-	int		i, j, count;
++	int		i, count;
++	unsigned	j;
+ 	int		*in;
+ 	msurface_t **out;
+ 	
+@@ -1877,6 +1962,9 @@ static void R_LoadMarksurfaces( const lump_t *l )
+ 	for ( i=0 ; i<count ; i++)
+ 	{
+ 		j = LittleLong(in[i]);
++		if ( j >= s_worldData.numsurfaces ) {
++			ri.Error( ERR_DROP, "%s: bad surface", __func__ );
++		}
+ 		out[i] = s_worldData.surfaces + j;
+ 	}
+ }
+@@ -1925,17 +2013,15 @@ R_LoadFogs
+ =================
+ */
+ static void R_LoadFogs( const lump_t *l, const lump_t *brushesLump, const lump_t *sidesLump ) {
+-	int			i, n;
++	int			i, j, n;
+ 	fog_t		*out;
+ 	const dfog_t		*fogs;
+ 	const dbrush_t 	*brushes, *brush;
+ 	const dbrushside_t	*sides;
+ 	int			count, brushesCount, sidesCount;
+-	int			sideNum;
+-	int			planeNum;
++	unsigned	sideNum, planeNum, firstSide;
+ 	shader_t	*shader;
+ 	float		d;
+-	int			firstSide;
+ 	vec3_t		fogColor;
+ 
+ 	fogs = (void *)(fileBase + l->fileofs);
+@@ -1964,6 +2050,9 @@ static void R_LoadFogs( const lump_t *l, const lump_t *brushesLump, const lump_t
+ 		ri.Error( ERR_DROP, "%s(): funny lump size in %s", __func__, s_worldData.name );
+ 	}
+ 	sidesCount = sidesLump->filelen / sizeof(*sides);
++	if (sidesCount < 6) {
++		ri.Error( ERR_DROP, "%s(): sides lump too short in %s", __func__, s_worldData.name );
++	}
+ 
+ 	for ( i=0 ; i<count ; i++, fogs++) {
+ 		out->originalBrushNumber = LittleLong( fogs->brushNum );
+@@ -1975,34 +2064,20 @@ static void R_LoadFogs( const lump_t *l, const lump_t *brushesLump, const lump_t
+ 
+ 		firstSide = LittleLong( brush->firstSide );
+ 
+-		if ( (unsigned)firstSide > sidesCount - 6 ) {
++		if ( firstSide > sidesCount - 6 ) {
+ 			ri.Error( ERR_DROP, "fog brush sideNumber out of range" );
+ 		}
+ 
+ 		// brushes are always sorted with the axial sides first
+-		sideNum = firstSide + 0;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[0][0] = -s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 1;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[1][0] = s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 2;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[0][1] = -s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 3;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[1][1] = s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 4;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[0][2] = -s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 5;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[1][2] = s_worldData.planes[ planeNum ].dist;
++		for ( j = 0; j < 6; j++ ) {
++			sideNum = firstSide + j;
++			planeNum = LittleLong( sides[ sideNum ].planeNum );
++			if ( planeNum >= s_worldData.numplanes ) {
++				ri.Error( ERR_DROP, "fog brush planeNum out of range" );
++			}
++			d = s_worldData.planes[ planeNum ].dist;
++			out->bounds[j & 1][j >> 1] = (j & 1) ? d : -d;
++		}
+ 
+ 		// get information from the shader for fog parameters
+ 		shader = R_FindShader( fogs->shader, LIGHTMAP_NONE, qtrue );
+@@ -2036,13 +2111,15 @@ static void R_LoadFogs( const lump_t *l, const lump_t *brushesLump, const lump_t
+ 		if ( sideNum == -1 ) {
+ 			out->hasSurface = qfalse;
+ 		} else {
+-			int sideOffset = firstSide + sideNum;
+-			if ( (unsigned)sideOffset >= sidesCount ) {
+-				ri.Printf( PRINT_WARNING, "bad fog side offset %i\n", sideOffset );
++			if ( sideNum >= sidesCount - firstSide ) {
++				ri.Printf( PRINT_WARNING, "bad fog side offset\n" );
+ 				out->hasSurface = qfalse;
+ 			} else {
+ 				out->hasSurface = qtrue;
+-				planeNum = LittleLong( sides[ sideOffset ].planeNum );
++				planeNum = LittleLong( sides[ firstSide + sideNum ].planeNum );
++				if ( planeNum >= s_worldData.numplanes ) {
++					ri.Error( ERR_DROP, "fog brush planeNum out of range" );
++				}
+ 				VectorSubtract( vec3_origin, s_worldData.planes[ planeNum ].normal, out->surface );
+ 				out->surface[3] = -s_worldData.planes[ planeNum ].dist;
+ 			}
+@@ -2062,12 +2139,18 @@ R_LoadLightGrid
+ static void R_LoadLightGrid( const lump_t *l ) {
+ 	int		i;
+ 	vec3_t	maxs;
+-	int		numGridPoints;
++	unsigned bounds[3];
++	unsigned numGridPoints;
+ 	world_t	*w;
+ 	float	*wMins, *wMaxs;
+ 
+ 	w = &s_worldData;
+ 
++	if ( !l->filelen ) {
++		w->lightGridData = NULL;
++		return;
++	}
++
+ 	w->lightGridInverseSize[0] = 1.0f / w->lightGridSize[0];
+ 	w->lightGridInverseSize[1] = 1.0f / w->lightGridSize[1];
+ 	w->lightGridInverseSize[2] = 1.0f / w->lightGridSize[2];
+@@ -2078,17 +2161,28 @@ static void R_LoadLightGrid( const lump_t *l ) {
+ 	for ( i = 0 ; i < 3 ; i++ ) {
+ 		w->lightGridOrigin[i] = w->lightGridSize[i] * ceil( wMins[i] / w->lightGridSize[i] );
+ 		maxs[i] = w->lightGridSize[i] * floor( wMaxs[i] / w->lightGridSize[i] );
+-		w->lightGridBounds[i] = (maxs[i] - w->lightGridOrigin[i])/w->lightGridSize[i] + 1;
++		bounds[i] = (maxs[i] - w->lightGridOrigin[i])/w->lightGridSize[i] + 1;
+ 	}
+ 
+-	numGridPoints = w->lightGridBounds[0] * w->lightGridBounds[1] * w->lightGridBounds[2];
++	if ( (uint64_t)bounds[0] * bounds[1] > INT_MAX ||
++		 (uint64_t)bounds[0] * bounds[1] * bounds[2] > INT_MAX) {
++		ri.Printf( PRINT_WARNING, "WARNING: bad light grid bounds\n" );
++		w->lightGridData = NULL;
++		return;
++	}
+ 
+-	if ( l->filelen != numGridPoints * 8 ) {
++	numGridPoints = bounds[0] * bounds[1] * bounds[2];
++
++	if ( l->filelen % 8 || l->filelen / 8 != numGridPoints ) {
+ 		ri.Printf( PRINT_WARNING, "WARNING: light grid mismatch\n" );
+ 		w->lightGridData = NULL;
+ 		return;
+ 	}
+ 
++	for ( i = 0 ; i < 3 ; i++ ) {
++		w->lightGridBounds[i] = bounds[i];
++	}
++
+ 	w->lightGridData = ri.Hunk_Alloc( l->filelen, h_low );
+ 	Com_Memcpy( w->lightGridData, (void *)(fileBase + l->fileofs), l->filelen );
+ 
+@@ -2116,13 +2210,13 @@ static void R_LoadEntities( const lump_t *l ) {
+ 	w->lightGridSize[1] = 64;
+ 	w->lightGridSize[2] = 128;
+ 
+-	p = (const char *)(fileBase + l->fileofs);
+-
+ 	// store for reference by the cgame
+ 	w->entityString = ri.Hunk_Alloc( l->filelen + 1, h_low );
+-	strcpy( w->entityString, p );
++	memcpy( w->entityString, fileBase + l->fileofs, l->filelen );
++	w->entityString[l->filelen] = 0;
+ 	w->entityParsePoint = w->entityString;
+ 
++	p = w->entityString;
+ 	token = COM_ParseExt( &p, qtrue );
+ 	if (*token != '{') {
+ 		return;
+@@ -2272,9 +2366,9 @@ void RE_LoadWorldMap( const char *name ) {
+ 	}
+ 
+ 	for ( i = 0; i < HEADER_LUMPS; i++ ) {
+-		int32_t ofs = header->lumps[i].fileofs;
+-		int32_t len = header->lumps[i].filelen;
+-		if ( (uint32_t)ofs > MAX_QINT || (uint32_t)len > MAX_QINT || ofs + len > size || ofs + len < 0 ) {
++		uint32_t ofs = header->lumps[i].fileofs;
++		uint32_t len = header->lumps[i].filelen;
++		if ( (uint64_t)ofs + len > size ) {
+ 			ri.Error( ERR_DROP, "%s: %s has wrong lump[%i] size/offset", __func__, name, i );
+ 		}
+ 	}
+diff --git a/code/renderer/tr_world.c b/code/renderer/tr_world.c
+index e19d64a3f7..c7e8b84649 100644
+--- a/code/renderer/tr_world.c
++++ b/code/renderer/tr_world.c
+@@ -864,7 +864,7 @@ static void R_MarkLeaves (void) {
+ 		}
+ 
+ 		// check for door connection
+-		if ( (tr.refdef.areamask[leaf->area>>3] & (1<<(leaf->area&7)) ) ) {
++		if ( leaf->area >= 0 && (tr.refdef.areamask[leaf->area>>3] & (1<<(leaf->area&7))) ) {
+ 			continue;		// not visible
+ 		}
+ 
+diff --git a/code/renderervk/tr_bsp.c b/code/renderervk/tr_bsp.c
+index 38ca919170..858c43ce86 100644
+--- a/code/renderervk/tr_bsp.c
++++ b/code/renderervk/tr_bsp.c
+@@ -485,7 +485,7 @@ R_LoadVisibility
+ =================
+ */
+ static void R_LoadVisibility( const lump_t *l ) {
+-	int		len;
++	unsigned numClusters, clusterBytes, len;
+ 	byte	*buf;
+ 
+ 	len = PAD( s_worldData.numClusters, 64 );
+@@ -496,10 +496,30 @@ static void R_LoadVisibility( const lump_t *l ) {
+ 	if ( !len ) {
+ 		return;
+ 	}
++
++	if ( len < VIS_HEADER ) {
++		Com_Error( ERR_DROP, "%s: lump too short", __func__ );
++	}
++
+ 	buf = fileBase + l->fileofs;
++	numClusters = LittleLong( ((int *)buf)[0] );
++	clusterBytes = LittleLong( ((int *)buf)[1] );
+ 
+-	s_worldData.numClusters = LittleLong( ((int *)buf)[0] );
+-	s_worldData.clusterBytes = LittleLong( ((int *)buf)[1] );
++	buf += VIS_HEADER;
++	len -= VIS_HEADER;
++
++	if ( (uint64_t)numClusters * clusterBytes > len ) {
++		Com_Error( ERR_DROP, "%s: lump too short", __func__ );
++	}
++	if ( numClusters < s_worldData.numClusters ) {
++		Com_Error( ERR_DROP, "%s: bad numClusters", __func__ );
++	}
++	if ( clusterBytes < (numClusters + 7) >> 3 ) {
++		Com_Error( ERR_DROP, "%s: bad clusterBytes", __func__ );
++	}
++
++	s_worldData.numClusters = numClusters;
++	s_worldData.clusterBytes = clusterBytes;
+ 
+ 	// CM_Load should have given us the vis data to share, so
+ 	// we don't need to allocate another copy
+@@ -508,8 +528,8 @@ static void R_LoadVisibility( const lump_t *l ) {
+ 	} else {
+ 		byte	*dest;
+ 
+-		dest = ri.Hunk_Alloc( len - 8, h_low );
+-		Com_Memcpy( dest, buf + 8, len - 8 );
++		dest = ri.Hunk_Alloc( len, h_low );
++		Com_Memcpy( dest, buf, len );
+ 		s_worldData.vis = dest;
+ 	}
+ }
+@@ -636,19 +656,16 @@ void qsort_idx( int32_t *a, const int n ) {
+ ParseFace
+ ===============
+ */
+-static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t *surf, int *indexes ) {
++static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, int numPoints, msurface_t *surf, int *srcIndexes, int numIndexes ) {
+ 	int			i, j;
+ 	srfSurfaceFace_t	*cv;
+-	int			numPoints, numIndexes;
++	int			*indexes;
+ 	int			lightmapNum;
+ 	float		lightmapX, lightmapY;
+ 	int			sfaceSize, ofsIndexes;
+ 	//static const int idx_pattern[] = {2, 3, 4, 3, 5, 4};
+ 	//static const int idx_pattern2[] = {5, 4, 3, 2, 3, 4};
+ 
+-	// get fog volume
+-	surf->fogIndex = LittleLong( ds->fogNum ) + 1;
+-
+ 	lightmapNum = LittleLong( ds->lightmapNum );
+ 	if ( lightmapNum >= 0 && tr.mergeLightmaps ) {
+ 		lightmapNum = R_GetLightmapCoords( lightmapNum, &lightmapX, &lightmapY );
+@@ -662,15 +679,12 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	// get shader value
+ 	surf->shader = ShaderForShaderNum( LittleLong( ds->shaderNum ), lightmapNum );
+ 
+-	numPoints = LittleLong( ds->numVerts );
+ 	if (numPoints > MAX_FACE_POINTS) {
+ 		ri.Printf( PRINT_WARNING, "WARNING: MAX_FACE_POINTS exceeded: %i\n", numPoints);
+ 		numPoints = MAX_FACE_POINTS;
+ 		surf->shader = tr.defaultShader;
+ 	}
+ 
+-	numIndexes = LittleLong( ds->numIndexes );
+-
+ 	// create the srfSurfaceFace_t
+ 	sfaceSize = sizeof( *cv ) - sizeof( cv->points ) + sizeof( cv->points[0] ) * numPoints;
+ 	ofsIndexes = sfaceSize;
+@@ -682,7 +696,6 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	cv->numIndices = numIndexes;
+ 	cv->ofsIndices = ofsIndexes;
+ 
+-	verts += LittleLong( ds->firstVert );
+ 	for ( i = 0 ; i < numPoints ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			cv->points[i][j] = LittleFloat( verts[i].xyz[j] );
+@@ -699,13 +712,15 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 		}
+ 	}
+ 
+-	indexes += LittleLong( ds->firstIndex );
++	indexes = (int*)((byte *) cv + cv->ofsIndices);
++
+ 	for ( i = 0 ; i < numIndexes ; i++ ) {
+-		((int *)((byte *)cv + cv->ofsIndices ))[i] = LittleLong( indexes[ i ] );
++		unsigned num = LittleLong( srcIndexes[ i ] );
++		if ( num >= numPoints )
++			ri.Error( ERR_DROP, "%s: bad index", __func__ );
++		indexes[i] = num;
+ 	}
+ 
+-	indexes = (int*)((byte *) cv + cv->ofsIndices);
+-
+ 	// reorder certain indexes to avoid bug on intel gen 9.5 hardware/vulkan driver
+ 	// can be observed on lun3dm5 map
+ 	//if ( numIndexes >=6 && memcmp( indexes, idx_pattern, sizeof( idx_pattern ) ) == 0 ) {
+@@ -755,10 +770,10 @@ static void ParseFace( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ ParseMesh
+ ===============
+ */
+-static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t *surf ) {
++static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, int numVerts, msurface_t *surf ) {
+ 	srfGridMesh_t	*grid;
+ 	int				i, j;
+-	int				width, height, numPoints;
++	unsigned		width, height, numPoints;
+ 	drawVert_t points[MAX_PATCH_SIZE*MAX_PATCH_SIZE];
+ 	int				lightmapNum;
+ 	float			lightmapX, lightmapY;
+@@ -766,9 +781,6 @@ static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	vec3_t			tmpVec;
+ 	static surfaceType_t	skipData = SF_SKIP;
+ 
+-	// get fog volume
+-	surf->fogIndex = LittleLong( ds->fogNum ) + 1;
+-
+ 	lightmapNum = LittleLong( ds->lightmapNum );
+ 	if ( lightmapNum >= 0 && tr.mergeLightmaps ) {
+ 		lightmapNum = R_GetLightmapCoords( lightmapNum, &lightmapX, &lightmapY );
+@@ -792,8 +804,16 @@ static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ 	width = LittleLong( ds->patchWidth );
+ 	height = LittleLong( ds->patchHeight );
+ 
+-	verts += LittleLong( ds->firstVert );
++	// mirror CM_GeneratePatchCollide() checks
++	if (width <= 2 || height <= 2 || !(width & 1) || !(height & 1) ||
++		width > MAX_GRID_SIZE || height > MAX_GRID_SIZE ||
++		width * height > ARRAY_LEN(points))
++		ri.Error( ERR_DROP, "%s: bad patch size", __func__ );
++
+ 	numPoints = width * height;
++	if (numPoints > numVerts)
++		ri.Error( ERR_DROP, "%s: verts out of range", __func__ );
++
+ 	for ( i = 0 ; i < numPoints ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			points[i].xyz[j] = LittleFloat( verts[i].xyz[j] );
+@@ -834,16 +854,12 @@ static void ParseMesh( const dsurface_t *ds, const drawVert_t *verts, msurface_t
+ ParseTriSurf
+ ===============
+ */
+-static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurface_t *surf, int *indexes ) {
++static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, int numVerts, msurface_t *surf, int *indexes, int numIndexes ) {
+ 	srfTriangles_t	*tri;
+ 	int				i, j;
+-	int				numVerts, numIndexes;
+ 	int				lightmapNum;
+ 	float			lightmapX, lightmapY;
+ 
+-	// get fog volume
+-	surf->fogIndex = LittleLong( ds->fogNum ) + 1;
+-
+ 	lightmapNum = LittleLong( ds->lightmapNum );
+ 	if ( lightmapNum >= 0 && tr.mergeLightmaps ) {
+ 		lightmapNum = R_GetLightmapCoords( lightmapNum, &lightmapX, &lightmapY );
+@@ -857,9 +873,6 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ 	// get shader
+ 	surf->shader = ShaderForShaderNum( LittleLong( ds->shaderNum ), LIGHTMAP_BY_VERTEX );
+ 
+-	numVerts = LittleLong( ds->numVerts );
+-	numIndexes = LittleLong( ds->numIndexes );
+-
+ 	tri = ri.Hunk_Alloc( sizeof( *tri ) + numVerts * sizeof( tri->verts[0] ) 
+ 		+ numIndexes * sizeof( tri->indexes[0] ), h_low );
+ 	tri->surfaceType = SF_TRIANGLES;
+@@ -872,7 +885,6 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ 
+ 	// copy vertexes
+ 	ClearBounds( tri->bounds[0], tri->bounds[1] );
+-	verts += LittleLong( ds->firstVert );
+ 	for ( i = 0 ; i < numVerts ; i++ ) {
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+ 			tri->verts[i].xyz[j] = LittleFloat( verts[i].xyz[j] );
+@@ -893,7 +905,6 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ 	}
+ 
+ 	// copy indexes
+-	indexes += LittleLong( ds->firstIndex );
+ 	for ( i = 0 ; i < numIndexes ; i++ ) {
+ 		tri->indexes[i] = LittleLong( indexes[i] );
+ 		if ( tri->indexes[i] < 0 || tri->indexes[i] >= numVerts ) {
+@@ -908,13 +919,10 @@ static void ParseTriSurf( const dsurface_t *ds, const drawVert_t *verts, msurfac
+ ParseFlare
+ ===============
+ */
+-static void ParseFlare( const dsurface_t *ds, const drawVert_t *verts, msurface_t *surf, int *indexes ) {
++static void ParseFlare( const dsurface_t *ds, msurface_t *surf ) {
+ 	srfFlare_t		*flare;
+ 	int				i;
+ 
+-	// get fog volume
+-	surf->fogIndex = LittleLong( ds->fogNum ) + 1;
+-
+ 	// get shader
+ 	surf->shader = ShaderForShaderNum( LittleLong( ds->shaderNum ), LIGHTMAP_BY_VERTEX );
+ 
+@@ -1651,8 +1659,9 @@ static void R_LoadSurfaces( const lump_t *surfs, const lump_t *verts, const lump
+ 	msurface_t	*out;
+ 	const drawVert_t *dv;
+ 	int			*indexes;
+-	int			count;
++	int			count, totalVerts, totalIndexes;
+ 	int			numFaces, numMeshes, numTriSurfs, numFlares;
++	unsigned	firstVert, numVerts, firstIndex, numIndexes;
+ 	int			i;
+ 
+ 	numFaces = 0;
+@@ -1668,36 +1677,77 @@ static void R_LoadSurfaces( const lump_t *surfs, const lump_t *verts, const lump
+ 	dv = (void *)(fileBase + verts->fileofs);
+ 	if (verts->filelen % sizeof(*dv))
+ 		ri.Error( ERR_DROP, "%s(): funny lump size in %s", __func__, s_worldData.name );
++	totalVerts = verts->filelen / sizeof(*dv);
+ 
+ 	indexes = (void *)(fileBase + indexLump->fileofs);
+ 	if ( indexLump->filelen % sizeof(*indexes))
+ 		ri.Error( ERR_DROP, "%s(): funny lump size in %s", __func__, s_worldData.name );
++	totalIndexes = indexLump->filelen / sizeof(*indexes);
+ 
+ 	out = ri.Hunk_Alloc( count * sizeof(*out), h_low );
+ 
+ 	s_worldData.surfaces = out;
+ 	s_worldData.numsurfaces = count;
+ 
++	// shut up compiler
++	firstVert = numVerts = 0;
++	firstIndex = numIndexes = 0;
++
+ 	for ( i = 0 ; i < count ; i++, in++, out++ ) {
+-		switch ( LittleLong( in->surfaceType ) ) {
++		unsigned type = LittleLong( in->surfaceType );
++		unsigned fogIndex;
++
++		if ( type != MST_FLARE ) {
++			firstVert = LittleLong( in->firstVert );
++			if ( type == MST_PATCH )
++				numVerts = 0;	// use patch size
++			else
++				numVerts = LittleLong( in->numVerts );
++			if ( (uint64_t)firstVert + numVerts > totalVerts )
++				ri.Error( ERR_DROP, "%s: bad verts", __func__ );
++
++			if ( type != MST_PATCH ) {
++				firstIndex = LittleLong( in->firstIndex );
++				numIndexes = LittleLong( in->numIndexes );
++				if ( (uint64_t)firstIndex + numIndexes > totalIndexes )
++					ri.Error( ERR_DROP, "%s: bad indexes", __func__ );
++
++				// don't allow partial triangles
++				if ( numIndexes % 3 ) {
++					ri.Printf( PRINT_WARNING, "%s: odd number of indexes: %u\n", __func__, numIndexes );
++					numIndexes -= numIndexes % 3;
++				}
++			}
++		}
++
++		// get fog volume
++		fogIndex = LittleLong( in->fogNum ) + 1U;
++		if ( fogIndex >= s_worldData.numfogs ) {
++			if ( type != MST_FLARE )
++				ri.Printf( PRINT_WARNING, "%s: bad fog index: %u\n", __func__, fogIndex );
++			fogIndex = 0;
++		}
++		out->fogIndex = fogIndex;
++
++		switch ( type ) {
+ 		case MST_PATCH:
+-			ParseMesh( in, dv, out );
++			ParseMesh( in, dv + firstVert, totalVerts - firstVert, out );
+ 			numMeshes++;
+ 			break;
+ 		case MST_TRIANGLE_SOUP:
+-			ParseTriSurf( in, dv, out, indexes );
++			ParseTriSurf( in, dv + firstVert, numVerts, out, indexes + firstIndex, numIndexes );
+ 			numTriSurfs++;
+ 			break;
+ 		case MST_PLANAR:
+-			ParseFace( in, dv, out, indexes );
++			ParseFace( in, dv + firstVert, numVerts, out, indexes + firstIndex, numIndexes );
+ 			numFaces++;
+ 			break;
+ 		case MST_FLARE:
+-			ParseFlare( in, dv, out, indexes );
++			ParseFlare( in, out );
+ 			numFlares++;
+ 			break;
+ 		default:
+-			ri.Error( ERR_DROP, "Bad surfaceType %i", LittleLong( in->surfaceType ) );
++			ri.Error( ERR_DROP, "%s: bad surfaceType: %u", __func__, type );
+ 		}
+ 	}
+ 
+@@ -1725,6 +1775,7 @@ static void R_LoadSubmodels( const lump_t *l ) {
+ 	const dmodel_t *in;
+ 	bmodel_t	*out;
+ 	int			i, j, count;
++	unsigned	firstSurface, numSurfaces;
+ 
+ 	in = (void *)(fileBase + l->fileofs);
+ 	if (l->filelen % sizeof(*in))
+@@ -1751,8 +1802,14 @@ static void R_LoadSubmodels( const lump_t *l ) {
+ 			out->bounds[1][j] = LittleFloat (in->maxs[j]);
+ 		}
+ 
+-		out->firstSurface = s_worldData.surfaces + LittleLong( in->firstSurface );
+-		out->numSurfaces = LittleLong( in->numSurfaces );
++		firstSurface = LittleLong( in->firstSurface );
++		numSurfaces = LittleLong( in->numSurfaces );
++		if ( (uint64_t)firstSurface + numSurfaces > s_worldData.numsurfaces ) {
++			ri.Error( ERR_DROP, "%s: bad surfaces", __func__ );
++		}
++
++		out->firstSurface = s_worldData.surfaces + firstSurface;
++		out->numSurfaces = numSurfaces;
+ 	}
+ }
+ 
+@@ -1767,6 +1824,8 @@ R_SetParent
+ */
+ static void R_SetParent( mnode_t *node, mnode_t *parent )
+ {
++	if ( node->parent )
++		ri.Error( ERR_DROP, "%s: cycle encountered", __func__ );
+ 	node->parent = parent;
+ 	if ( node->contents != CONTENTS_NODE )
+ 		return;
+@@ -1781,7 +1840,8 @@ R_LoadNodesAndLeafs
+ =================
+ */
+ static void R_LoadNodesAndLeafs( const lump_t *nodeLump, const lump_t *leafLump ) {
+-	int			i, j, p;
++	int			i, j;
++	unsigned	p, firstmarksurface, nummarksurfaces;
+ 	const dnode_t		*in;
+ 	dleaf_t		*inLeaf;
+ 	mnode_t 	*out;
+@@ -1811,6 +1871,9 @@ static void R_LoadNodesAndLeafs( const lump_t *nodeLump, const lump_t *leafLump
+ 		}
+ 	
+ 		p = LittleLong(in->planeNum);
++		if ( p >= s_worldData.numplanes ) {
++			ri.Error( ERR_DROP, "%s: bad planeNum", __func__ );
++		}
+ 		out->plane = s_worldData.planes + p;
+ 
+ 		out->contents = CONTENTS_NODE;	// differentiate from leafs
+@@ -1818,10 +1881,18 @@ static void R_LoadNodesAndLeafs( const lump_t *nodeLump, const lump_t *leafLump
+ 		for (j=0 ; j<2 ; j++)
+ 		{
+ 			p = LittleLong (in->children[j]);
+-			if (p >= 0)
++			if (p & 0x80000000) {
++				p = ~p;
++				if ( p >= numLeafs ) {
++					ri.Error( ERR_DROP, "%s: bad leaf", __func__ );
++				}
++				out->children[j] = s_worldData.nodes + numNodes + p;
++			} else {
++				if ( p >= numNodes ) {
++					ri.Error( ERR_DROP, "%s: bad node", __func__ );
++				}
+ 				out->children[j] = s_worldData.nodes + p;
+-			else
+-				out->children[j] = s_worldData.nodes + numNodes + (-1 - p);
++			}
+ 		}
+ 	}
+ 	
+@@ -1836,15 +1907,25 @@ static void R_LoadNodesAndLeafs( const lump_t *nodeLump, const lump_t *leafLump
+ 		}
+ 
+ 		out->cluster = LittleLong(inLeaf->cluster);
++		if ( out->cluster + 1U > INT_MAX - 63U )
++			Com_Error( ERR_DROP, "%s: bad cluster", __func__ );
++
+ 		out->area = LittleLong(inLeaf->area);
++		if ( out->area + 1U > MAX_MAP_AREAS )
++			Com_Error( ERR_DROP, "%s: bad area", __func__ );
+ 
+ 		if ( out->cluster >= s_worldData.numClusters ) {
+ 			s_worldData.numClusters = out->cluster + 1;
+ 		}
+ 
+-		out->firstmarksurface = s_worldData.marksurfaces +
+-			LittleLong(inLeaf->firstLeafSurface);
+-		out->nummarksurfaces = LittleLong(inLeaf->numLeafSurfaces);
++		firstmarksurface = LittleLong(inLeaf->firstLeafSurface);
++		nummarksurfaces = LittleLong(inLeaf->numLeafSurfaces);
++		if ( (uint64_t)firstmarksurface + nummarksurfaces > s_worldData.nummarksurfaces ) {
++			ri.Error( ERR_DROP, "%s: bad marksurfaces", __func__ );
++		}
++
++		out->firstmarksurface = s_worldData.marksurfaces + firstmarksurface;
++		out->nummarksurfaces = nummarksurfaces;
+ 	}	
+ 
+ 	// chain descendants
+@@ -1909,7 +1990,8 @@ R_LoadMarksurfaces
+ */
+ static void R_LoadMarksurfaces( const lump_t *l )
+ {	
+-	int		i, j, count;
++	int		i, count;
++	unsigned	j;
+ 	int		*in;
+ 	msurface_t **out;
+ 	
+@@ -1925,6 +2007,9 @@ static void R_LoadMarksurfaces( const lump_t *l )
+ 	for ( i=0 ; i<count ; i++)
+ 	{
+ 		j = LittleLong(in[i]);
++		if ( j >= s_worldData.numsurfaces ) {
++			ri.Error( ERR_DROP, "%s: bad surface", __func__ );
++		}
+ 		out[i] = s_worldData.surfaces + j;
+ 	}
+ }
+@@ -1987,17 +2072,15 @@ R_LoadFogs
+ =================
+ */
+ static void R_LoadFogs( const lump_t *l, const lump_t *brushesLump, const lump_t *sidesLump ) {
+-	int			i, n;
++	int			i, j, n;
+ 	fog_t		*out;
+ 	const dfog_t		*fogs;
+ 	const dbrush_t 	*brushes, *brush;
+ 	const dbrushside_t	*sides;
+ 	int			count, brushesCount, sidesCount;
+-	int			sideNum;
+-	int			planeNum;
++	unsigned	sideNum, planeNum, firstSide;
+ 	shader_t	*shader;
+ 	float		d;
+-	int			firstSide;
+ 	vec3_t		fogColor;
+ 
+ 	fogs = (void *)(fileBase + l->fileofs);
+@@ -2026,6 +2109,9 @@ static void R_LoadFogs( const lump_t *l, const lump_t *brushesLump, const lump_t
+ 		ri.Error( ERR_DROP, "%s(): funny lump size in %s", __func__, s_worldData.name );
+ 	}
+ 	sidesCount = sidesLump->filelen / sizeof(*sides);
++	if (sidesCount < 6) {
++		ri.Error( ERR_DROP, "%s(): sides lump too short in %s", __func__, s_worldData.name );
++	}
+ 
+ 	for ( i=0 ; i<count ; i++, fogs++) {
+ 		out->originalBrushNumber = LittleLong( fogs->brushNum );
+@@ -2037,34 +2123,20 @@ static void R_LoadFogs( const lump_t *l, const lump_t *brushesLump, const lump_t
+ 
+ 		firstSide = LittleLong( brush->firstSide );
+ 
+-		if ( (unsigned)firstSide > sidesCount - 6 ) {
++		if ( firstSide > sidesCount - 6 ) {
+ 			ri.Error( ERR_DROP, "fog brush sideNumber out of range" );
+ 		}
+ 
+ 		// brushes are always sorted with the axial sides first
+-		sideNum = firstSide + 0;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[0][0] = -s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 1;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[1][0] = s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 2;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[0][1] = -s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 3;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[1][1] = s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 4;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[0][2] = -s_worldData.planes[ planeNum ].dist;
+-
+-		sideNum = firstSide + 5;
+-		planeNum = LittleLong( sides[ sideNum ].planeNum );
+-		out->bounds[1][2] = s_worldData.planes[ planeNum ].dist;
++		for ( j = 0; j < 6; j++ ) {
++			sideNum = firstSide + j;
++			planeNum = LittleLong( sides[ sideNum ].planeNum );
++			if ( planeNum >= s_worldData.numplanes ) {
++				ri.Error( ERR_DROP, "fog brush planeNum out of range" );
++			}
++			d = s_worldData.planes[ planeNum ].dist;
++			out->bounds[j & 1][j >> 1] = (j & 1) ? d : -d;
++		}
+ 
+ 		// get information from the shader for fog parameters
+ 		shader = R_FindShader( fogs->shader, LIGHTMAP_NONE, qtrue );
+@@ -2098,13 +2170,15 @@ static void R_LoadFogs( const lump_t *l, const lump_t *brushesLump, const lump_t
+ 		if ( sideNum == -1 ) {
+ 			out->hasSurface = qfalse;
+ 		} else {
+-			int sideOffset = firstSide + sideNum;
+-			if ( (unsigned)sideOffset >= sidesCount ) {
+-				ri.Printf( PRINT_WARNING, "bad fog side offset %i\n", sideOffset );
++			if ( sideNum >= sidesCount - firstSide ) {
++				ri.Printf( PRINT_WARNING, "bad fog side offset\n" );
+ 				out->hasSurface = qfalse;
+ 			} else {
+ 				out->hasSurface = qtrue;
+-				planeNum = LittleLong( sides[ sideOffset ].planeNum );
++				planeNum = LittleLong( sides[ firstSide + sideNum ].planeNum );
++				if ( planeNum >= s_worldData.numplanes ) {
++					ri.Error( ERR_DROP, "fog brush planeNum out of range" );
++				}
+ 				VectorSubtract( vec3_origin, s_worldData.planes[ planeNum ].normal, out->surface );
+ 				out->surface[3] = -s_worldData.planes[ planeNum ].dist;
+ 			}
+@@ -2124,12 +2198,18 @@ R_LoadLightGrid
+ static void R_LoadLightGrid( const lump_t *l ) {
+ 	int		i;
+ 	vec3_t	maxs;
+-	int		numGridPoints;
++	unsigned bounds[3];
++	unsigned numGridPoints;
+ 	world_t	*w;
+ 	float	*wMins, *wMaxs;
+ 
+ 	w = &s_worldData;
+ 
++	if ( !l->filelen ) {
++		w->lightGridData = NULL;
++		return;
++	}
++
+ 	w->lightGridInverseSize[0] = 1.0f / w->lightGridSize[0];
+ 	w->lightGridInverseSize[1] = 1.0f / w->lightGridSize[1];
+ 	w->lightGridInverseSize[2] = 1.0f / w->lightGridSize[2];
+@@ -2140,17 +2220,28 @@ static void R_LoadLightGrid( const lump_t *l ) {
+ 	for ( i = 0 ; i < 3 ; i++ ) {
+ 		w->lightGridOrigin[i] = w->lightGridSize[i] * ceil( wMins[i] / w->lightGridSize[i] );
+ 		maxs[i] = w->lightGridSize[i] * floor( wMaxs[i] / w->lightGridSize[i] );
+-		w->lightGridBounds[i] = (maxs[i] - w->lightGridOrigin[i])/w->lightGridSize[i] + 1;
++		bounds[i] = (maxs[i] - w->lightGridOrigin[i])/w->lightGridSize[i] + 1;
+ 	}
+ 
+-	numGridPoints = w->lightGridBounds[0] * w->lightGridBounds[1] * w->lightGridBounds[2];
++	if ( (uint64_t)bounds[0] * bounds[1] > INT_MAX ||
++		 (uint64_t)bounds[0] * bounds[1] * bounds[2] > INT_MAX) {
++		ri.Printf( PRINT_WARNING, "WARNING: bad light grid bounds\n" );
++		w->lightGridData = NULL;
++		return;
++	}
++
++	numGridPoints = bounds[0] * bounds[1] * bounds[2];
+ 
+-	if ( l->filelen != numGridPoints * 8 ) {
++	if ( l->filelen % 8 || l->filelen / 8 != numGridPoints ) {
+ 		ri.Printf( PRINT_WARNING, "WARNING: light grid mismatch\n" );
+ 		w->lightGridData = NULL;
+ 		return;
+ 	}
+ 
++	for ( i = 0 ; i < 3 ; i++ ) {
++		w->lightGridBounds[i] = bounds[i];
++	}
++
+ 	w->lightGridData = ri.Hunk_Alloc( l->filelen, h_low );
+ 	Com_Memcpy( w->lightGridData, (void *)(fileBase + l->fileofs), l->filelen );
+ 
+@@ -2178,13 +2269,13 @@ static void R_LoadEntities( const lump_t *l ) {
+ 	w->lightGridSize[1] = 64;
+ 	w->lightGridSize[2] = 128;
+ 
+-	p = (const char *)(fileBase + l->fileofs);
+-
+ 	// store for reference by the cgame
+ 	w->entityString = ri.Hunk_Alloc( l->filelen + 1, h_low );
+-	strcpy( w->entityString, p );
++	memcpy( w->entityString, fileBase + l->fileofs, l->filelen );
++	w->entityString[l->filelen] = 0;
+ 	w->entityParsePoint = w->entityString;
+ 
++	p = w->entityString;
+ 	token = COM_ParseExt( &p, qtrue );
+ 	if (*token != '{') {
+ 		return;
+@@ -2334,9 +2425,9 @@ void RE_LoadWorldMap( const char *name ) {
+ 	}
+ 
+ 	for ( i = 0; i < HEADER_LUMPS; i++ ) {
+-		int32_t ofs = header->lumps[i].fileofs;
+-		int32_t len = header->lumps[i].filelen;
+-		if ( (uint32_t)ofs > MAX_QINT || (uint32_t)len > MAX_QINT || ofs + len > size || ofs + len < 0 ) {
++		uint32_t ofs = header->lumps[i].fileofs;
++		uint32_t len = header->lumps[i].filelen;
++		if ( (uint64_t)ofs + len > size ) {
+ 			ri.Error( ERR_DROP, "%s: %s has wrong lump[%i] size/offset", __func__, name, i );
+ 		}
+ 	}
+diff --git a/code/renderervk/tr_world.c b/code/renderervk/tr_world.c
+index d6c59eae90..5dc9e16086 100644
+--- a/code/renderervk/tr_world.c
++++ b/code/renderervk/tr_world.c
+@@ -864,7 +864,7 @@ static void R_MarkLeaves (void) {
+ 		}
+ 
+ 		// check for door connection
+-		if ( (tr.refdef.areamask[leaf->area>>3] & (1<<(leaf->area&7)) ) ) {
++		if ( leaf->area >= 0 && (tr.refdef.areamask[leaf->area>>3] & (1<<(leaf->area&7))) ) {
+ 			continue;		// not visible
+ 		}
+ 
+
+From 83a85aaeb70274f907d69195ca11ef863acc5dfe Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 01:32:23 +0300
+Subject: [PATCH 10/18] Harden game syscall argument validation.
+
+SV_GentityNum() must validate entity number received from untrusted game
+code.
+
+SV_LocateGameData() must validate that entire MAX_GENTITIES array fits
+into VM memory and entity/client sizes are big enough to hold shared
+structures.
+---
+ code/botlib/be_ai_goal.c |  2 +-
+ code/server/sv_game.c    | 26 +++++++++++++++-----------
+ 2 files changed, 16 insertions(+), 12 deletions(-)
+
+diff --git a/code/botlib/be_ai_goal.c b/code/botlib/be_ai_goal.c
+index bbe2014981..e195a12cf1 100644
+--- a/code/botlib/be_ai_goal.c
++++ b/code/botlib/be_ai_goal.c
+@@ -598,7 +598,7 @@ void BotInitLevelItems(void)
+ 			{
+ 				VectorCopy(origin, end);
+ 				end[2] -= 32;
+-				trace = AAS_Trace(origin, ic->iteminfo[i].mins, ic->iteminfo[i].maxs, end, -1, CONTENTS_SOLID|CONTENTS_PLAYERCLIP);
++				trace = AAS_Trace(origin, ic->iteminfo[i].mins, ic->iteminfo[i].maxs, end, ENTITYNUM_NONE, CONTENTS_SOLID|CONTENTS_PLAYERCLIP);
+ 				//if the item is not near the ground
+ 				if (trace.fraction >= 1)
+ 				{
+diff --git a/code/server/sv_game.c b/code/server/sv_game.c
+index f6b4380700..32f43c6dae 100644
+--- a/code/server/sv_game.c
++++ b/code/server/sv_game.c
+@@ -41,6 +41,9 @@ int	SV_NumForGentity( sharedEntity_t *ent ) {
+ sharedEntity_t *SV_GentityNum( int num ) {
+ 	sharedEntity_t *ent;
+ 
++	if ( num < 0 || num >= MAX_GENTITIES ) {
++		Com_Error( ERR_DROP, "%s: bad num %d", __func__, num );
++	}
+ 	ent = (sharedEntity_t *)((byte *)sv.gentities + sv.gentitySize*(num));
+ 
+ 	return ent;
+@@ -257,22 +260,23 @@ SV_LocateGameData
+ 
+ ===============
+ */
+-static void SV_LocateGameData( sharedEntity_t *gEnts, int numGEntities, int sizeofGEntity_t, playerState_t *clients, int sizeofGameClient ) {
++static void SV_LocateGameData( sharedEntity_t *gEnts, unsigned numGEntities, unsigned sizeofGEntity_t,
++							   playerState_t *clients, unsigned sizeofGameClient ) {
+ 
+ 	if ( !gvm->entryPoint ) {
+ 		if ( numGEntities > MAX_GENTITIES ) {
+-			Com_Error( ERR_DROP, "%s: bad entity count %i", __func__, numGEntities );
+-		} else {
+-			if ( sizeofGEntity_t > gvm->exactDataLength / numGEntities ) {
+-				Com_Error( ERR_DROP, "%s: bad entity size %i", __func__, sizeofGEntity_t );	
+-			} else if ( (byte*)gEnts + (numGEntities * sizeofGEntity_t) > (gvm->dataBase + gvm->exactDataLength) ) {
+-				Com_Error( ERR_DROP, "%s: entities located out of data segment", __func__ );
+-			}
++			Com_Error( ERR_DROP, "%s: bad entity count %u", __func__, numGEntities );
++		}
++
++		if ( sizeofGEntity_t < sizeof(sharedEntity_t) || sizeofGEntity_t > gvm->exactDataLength / MAX_GENTITIES ) {
++			Com_Error( ERR_DROP, "%s: bad entity size %u", __func__, sizeofGEntity_t );
++		} else if ( (byte*)gEnts - gvm->dataBase > gvm->exactDataLength - sizeofGEntity_t * MAX_GENTITIES ) {
++			Com_Error( ERR_DROP, "%s: entities located out of data segment", __func__ );
+ 		}
+ 
+-		if ( sizeofGameClient > gvm->exactDataLength / MAX_CLIENTS ) {
+-			Com_Error( ERR_DROP, "%s: bad game client size %i", __func__, sizeofGameClient );	
+-		} else if ( (byte*)clients + (sizeofGameClient * MAX_CLIENTS) > gvm->dataBase + gvm->exactDataLength ) {
++		if ( sizeofGameClient < sizeof(playerState_t) || sizeofGameClient > gvm->exactDataLength / MAX_CLIENTS ) {
++			Com_Error( ERR_DROP, "%s: bad game client size %u", __func__, sizeofGameClient );
++		} else if ( (byte*)clients - gvm->dataBase > gvm->exactDataLength - sizeofGameClient * MAX_CLIENTS ) {
+ 			Com_Error( ERR_DROP, "%s: clients located out of data segment", __func__ );
+ 		}
+ 	}
+
+From 36634a5883e2661fa8194c2545ea625f6785dc29 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 18:52:14 +0300
+Subject: [PATCH 11/18] Fix broken MD3 LODs registration.
+
+There are multiple problems with R_RegisterMD3().
+
+First, it registers LODs in reverse order, stopping when error occurs,
+and then tries to fill missing LOD slots with duplicates. But this
+doesn't work due to broken logic. If error occurs some LOD slots end up
+having missing/invalid data.
+
+Fix this by registering LODs in ascending order, only incrementing
+mod->numLods after LOD slot is successfully loaded. In case of errors
+this gives preference to higher detail LODs which most users likely
+want.
+
+Second, strchr() is used to find and strip filename extension. This
+breaks models with dot characters in path components. Use specialized
+COM_GetExtension()/COM_StripExtension() functions to avoid this problem.
+---
+ code/renderer/tr_model.c   | 66 +++++++++++---------------------------
+ code/renderervk/tr_model.c | 66 +++++++++++---------------------------
+ 2 files changed, 38 insertions(+), 94 deletions(-)
+
+diff --git a/code/renderer/tr_model.c b/code/renderer/tr_model.c
+index 5355f47279..ae23fbefab 100644
+--- a/code/renderer/tr_model.c
++++ b/code/renderer/tr_model.c
+@@ -41,28 +41,16 @@ static qhandle_t R_RegisterMD3(const char *name, model_t *mod)
+ 	} buf;
+ 	int			lod;
+ 	uint32_t	ident;
+-	qboolean	loaded = qfalse;
+-	int			numLoaded;
++	qboolean	loaded;
+ 	int			fileSize;
+ 	char filename[MAX_QPATH], namebuf[MAX_QPATH+20];
+-	char *fext, defex[] = "md3";
++	const char *fext;
+ 
+-	numLoaded = 0;
++	fext = COM_GetExtension(name); // always non-empty
++	COM_StripExtension(name, filename, sizeof(filename));
+ 
+-	strcpy(filename, name);
+-
+-	fext = strchr(filename, '.');
+-	if(!fext)
+-		fext = defex;
+-	else
+-	{
+-		*fext = '\0';
+-		fext++;
+-	}
+-
+-	for (lod = MD3_MAX_LODS - 1 ; lod >= 0 ; lod--)
+-	{
+-		if(lod)
++	for ( lod = 0 ; lod < MD3_MAX_LODS ; lod++ ) {
++		if ( lod )
+ 			Com_sprintf(namebuf, sizeof(namebuf), "%s_%d.%s", filename, lod, fext);
+ 		else
+ 			Com_sprintf(namebuf, sizeof(namebuf), "%s.%s", filename, fext);
+@@ -78,34 +66,25 @@ static qhandle_t R_RegisterMD3(const char *name, model_t *mod)
+ 		}
+ 		
+ 		ident = LittleLong( *buf.u );
+-		if ( ident == MD3_IDENT )
+-			loaded = R_LoadMD3( mod, lod, buf.v, fileSize, name );
+-		else
+-			ri.Printf( PRINT_WARNING,"%s: unknown fileid for %s\n", __func__, name );
++		if ( ident == MD3_IDENT ) {
++			loaded = R_LoadMD3( mod, mod->numLods, buf.v, fileSize, name );
++		} else {
++			ri.Printf( PRINT_WARNING, "%s: unknown fileid for %s\n", __func__, name );
++			loaded = qfalse;
++		}
+ 		
+ 		ri.FS_FreeFile( buf.v );
+ 
+-		if ( loaded )
+-		{
++		if ( loaded ) {
+ 			mod->numLods++;
+-			numLoaded++;
+-		}
+-		else
++		} else {
++			mod->md3[mod->numLods] = NULL;
+ 			break;
+-	}
+-
+-	if ( numLoaded )
+-	{
+-		// duplicate into higher lod spots that weren't
+-		// loaded, in case the user changes r_lodbias on the fly
+-		for ( lod--; lod >= 0; lod-- )
+-		{
+-			mod->numLods++;
+-			mod->md3[lod] = mod->md3[lod + 1];
+ 		}
++	}
+ 
++	if ( mod->numLods )
+ 		return mod->index;
+-	}
+ 
+ 	ri.Printf( PRINT_DEVELOPER, S_COLOR_YELLOW "%s: couldn't load %s\n", __func__, name );
+ 
+@@ -992,21 +971,14 @@ R_Modellist_f
+ ================
+ */
+ void R_Modellist_f( void ) {
+-	int		i, j;
++	int		i;
+ 	model_t	*mod;
+ 	int		total;
+-	int		lods;
+ 
+ 	total = 0;
+ 	for ( i = 1 ; i < tr.numModels; i++ ) {
+ 		mod = tr.models[i];
+-		lods = 1;
+-		for ( j = 1 ; j < MD3_MAX_LODS ; j++ ) {
+-			if ( mod->md3[j] && mod->md3[j] != mod->md3[j-1] ) {
+-				lods++;
+-			}
+-		}
+-		ri.Printf( PRINT_ALL, "%8i : (%i) %s\n",mod->dataSize, lods, mod->name );
++		ri.Printf( PRINT_ALL, "%8i : (%i) %s\n",mod->dataSize, mod->numLods, mod->name );
+ 		total += mod->dataSize;
+ 	}
+ 	ri.Printf( PRINT_ALL, "%8i : Total models\n", total );
+diff --git a/code/renderervk/tr_model.c b/code/renderervk/tr_model.c
+index 24a075b9f0..b46e444c9f 100644
+--- a/code/renderervk/tr_model.c
++++ b/code/renderervk/tr_model.c
+@@ -41,28 +41,16 @@ static qhandle_t R_RegisterMD3(const char *name, model_t *mod)
+ 	} buf;
+ 	int			lod;
+ 	uint32_t	ident;
+-	qboolean	loaded = qfalse;
+-	int			numLoaded;
++	qboolean	loaded;
+ 	int			fileSize;
+ 	char filename[MAX_QPATH], namebuf[MAX_QPATH+20];
+-	char *fext, defex[] = "md3";
++	const char *fext;
+ 
+-	numLoaded = 0;
++	fext = COM_GetExtension(name); // always non-empty
++	COM_StripExtension(name, filename, sizeof(filename));
+ 
+-	strcpy(filename, name);
+-
+-	fext = strchr(filename, '.');
+-	if(!fext)
+-		fext = defex;
+-	else
+-	{
+-		*fext = '\0';
+-		fext++;
+-	}
+-
+-	for (lod = MD3_MAX_LODS - 1 ; lod >= 0 ; lod--)
+-	{
+-		if(lod)
++	for ( lod = 0 ; lod < MD3_MAX_LODS ; lod++ ) {
++		if ( lod )
+ 			Com_sprintf(namebuf, sizeof(namebuf), "%s_%d.%s", filename, lod, fext);
+ 		else
+ 			Com_sprintf(namebuf, sizeof(namebuf), "%s.%s", filename, fext);
+@@ -78,34 +66,25 @@ static qhandle_t R_RegisterMD3(const char *name, model_t *mod)
+ 		}
+ 		
+ 		ident = LittleLong( *buf.u );
+-		if ( ident == MD3_IDENT )
+-			loaded = R_LoadMD3( mod, lod, buf.v, fileSize, name );
+-		else
+-			ri.Printf( PRINT_WARNING,"%s: unknown fileid for %s\n", __func__, name );
++		if ( ident == MD3_IDENT ) {
++			loaded = R_LoadMD3( mod, mod->numLods, buf.v, fileSize, name );
++		} else {
++			ri.Printf( PRINT_WARNING, "%s: unknown fileid for %s\n", __func__, name );
++			loaded = qfalse;
++		}
+ 		
+ 		ri.FS_FreeFile( buf.v );
+ 
+-		if ( loaded )
+-		{
++		if ( loaded ) {
+ 			mod->numLods++;
+-			numLoaded++;
+-		}
+-		else
++		} else {
++			mod->md3[mod->numLods] = NULL;
+ 			break;
+-	}
+-
+-	if ( numLoaded )
+-	{
+-		// duplicate into higher lod spots that weren't
+-		// loaded, in case the user changes r_lodbias on the fly
+-		for ( lod--; lod >= 0; lod-- )
+-		{
+-			mod->numLods++;
+-			mod->md3[lod] = mod->md3[lod + 1];
+ 		}
++	}
+ 
++	if ( mod->numLods )
+ 		return mod->index;
+-	}
+ 
+ 	ri.Printf( PRINT_DEVELOPER, S_COLOR_YELLOW "%s: couldn't load %s\n", __func__, name );
+ 
+@@ -994,21 +973,14 @@ R_Modellist_f
+ ================
+ */
+ void R_Modellist_f( void ) {
+-	int		i, j;
++	int		i;
+ 	model_t	*mod;
+ 	int		total;
+-	int		lods;
+ 
+ 	total = 0;
+ 	for ( i = 1 ; i < tr.numModels; i++ ) {
+ 		mod = tr.models[i];
+-		lods = 1;
+-		for ( j = 1 ; j < MD3_MAX_LODS ; j++ ) {
+-			if ( mod->md3[j] && mod->md3[j] != mod->md3[j-1] ) {
+-				lods++;
+-			}
+-		}
+-		ri.Printf( PRINT_ALL, "%8i : (%i) %s\n",mod->dataSize, lods, mod->name );
++		ri.Printf( PRINT_ALL, "%8i : (%i) %s\n",mod->dataSize, mod->numLods, mod->name );
+ 		total += mod->dataSize;
+ 	}
+ 	ri.Printf( PRINT_ALL, "%8i : Total models\n", total );
+
+From 53e8f6d587971459141e33a73d84da89138701c3 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Wed, 18 Mar 2026 20:48:56 +0300
+Subject: [PATCH 12/18] Fix some minor PVS handling issues.
+
+inPVS() family of functions should never return true if one or both
+points are inside solid leaf. If the second point is in solid, PVS row
+data would be indexed with a cluster of -1, which is invalid. Arguments
+are supposed to be commutative, so treat both points equally.
+
+CM_ClusterPVS() returns data for cluster 0 when passed cluster -1, which
+is incorrect for maps with visibility data. For consistency, handle
+cluster -1 the same as renderer does: return a dummy PVS row of all-ones.
+
+Don't overallocate memory for dummy PVS rows by properly dividing number
+of clusters by 8.
+---
+ code/qcommon/cm_load.c     | 10 +++++-----
+ code/qcommon/cm_local.h    |  2 +-
+ code/qcommon/cm_test.c     |  4 ++--
+ code/renderer/tr_bsp.c     |  2 +-
+ code/renderer/tr_world.c   |  4 ++++
+ code/renderervk/tr_bsp.c   |  2 +-
+ code/renderervk/tr_world.c |  4 ++++
+ code/server/sv_game.c      |  8 ++++++++
+ 8 files changed, 26 insertions(+), 10 deletions(-)
+
+diff --git a/code/qcommon/cm_load.c b/code/qcommon/cm_load.c
+index 1f176b46ee..adb4e38e68 100644
+--- a/code/qcommon/cm_load.c
++++ b/code/qcommon/cm_load.c
+@@ -321,7 +321,7 @@ static void CMod_LoadLeafs( const lump_t *l )
+ 	for ( i = 0; i < count; i++, in++, out++ )
+ 	{
+ 		out->cluster = LittleLong( in->cluster );
+-		if ( out->cluster + 1U > INT_MAX - 31U )
++		if ( out->cluster + 1U > INT_MAX - 63U )
+ 			Com_Error( ERR_DROP, "%s: bad cluster", __func__ );
+ 
+ 		out->area = LittleLong( in->area );
+@@ -523,11 +523,12 @@ static void CMod_LoadVisibility( const lump_t *l ) {
+ 	unsigned numClusters, clusterBytes, len;
+ 	byte	*buf;
+ 
++	len = PAD( cm.numClusters, 64 ) >> 3;
++	cm.novis = Hunk_Alloc( len, h_high );
++	Com_Memset( cm.novis, 0xff, len );
++
+ 	len = l->filelen;
+ 	if ( !len ) {
+-		cm.clusterBytes = ( cm.numClusters + 31 ) & ~31;
+-		cm.visibility = Hunk_Alloc( cm.clusterBytes, h_high );
+-		Com_Memset( cm.visibility, 255, cm.clusterBytes );
+ 		return;
+ 	}
+ 
+@@ -552,7 +553,6 @@ static void CMod_LoadVisibility( const lump_t *l ) {
+ 		Com_Error( ERR_DROP, "%s: bad clusterBytes", __func__ );
+ 	}
+ 
+-	cm.vised = qtrue;
+ 	cm.visibility = Hunk_Alloc( len, h_high );
+ 	cm.numClusters = numClusters;
+ 	cm.clusterBytes = clusterBytes;
+diff --git a/code/qcommon/cm_local.h b/code/qcommon/cm_local.h
+index 61279aaebb..01a0fcc271 100644
+--- a/code/qcommon/cm_local.h
++++ b/code/qcommon/cm_local.h
+@@ -156,7 +156,7 @@ typedef struct {
+ 	int			numClusters;
+ 	int			clusterBytes;
+ 	byte		*visibility;
+-	qboolean	vised;			// if false, visibility is just a single cluster of ffs
++	byte		*novis;		// clusterBytes of 0xff
+ 
+ 	int			numEntityChars;
+ 	char		*entityString;
+diff --git a/code/qcommon/cm_test.c b/code/qcommon/cm_test.c
+index 036bba36c5..32d8021c44 100644
+--- a/code/qcommon/cm_test.c
++++ b/code/qcommon/cm_test.c
+@@ -314,8 +314,8 @@ PVS
+ */
+ 
+ byte	*CM_ClusterPVS (int cluster) {
+-	if (cluster < 0 || cluster >= cm.numClusters || !cm.vised ) {
+-		return cm.visibility;
++	if (cluster < 0 || cluster >= cm.numClusters || !cm.visibility ) {
++		return cm.novis;
+ 	}
+ 
+ 	return cm.visibility + cluster * cm.clusterBytes;
+diff --git a/code/renderer/tr_bsp.c b/code/renderer/tr_bsp.c
+index fb0d1c074a..e5b1c7204f 100644
+--- a/code/renderer/tr_bsp.c
++++ b/code/renderer/tr_bsp.c
+@@ -488,7 +488,7 @@ static void R_LoadVisibility( const lump_t *l ) {
+ 	unsigned numClusters, clusterBytes, len;
+ 	byte	*buf;
+ 
+-	len = PAD( s_worldData.numClusters, 64 );
++	len = PAD( s_worldData.numClusters, 64 ) >> 3;
+ 	s_worldData.novis = ri.Hunk_Alloc( len, h_low );
+ 	Com_Memset( s_worldData.novis, 0xff, len );
+ 
+diff --git a/code/renderer/tr_world.c b/code/renderer/tr_world.c
+index c7e8b84649..8ebe9008cf 100644
+--- a/code/renderer/tr_world.c
++++ b/code/renderer/tr_world.c
+@@ -789,8 +789,12 @@ qboolean R_inPVS( const vec3_t p1, const vec3_t p2 ) {
+ 	const byte	*vis;
+ 
+ 	leaf = R_PointInLeaf( p1 );
++	if ( leaf->cluster < 0 )
++		return qfalse;
+ 	vis = ri.CM_ClusterPVS( leaf->cluster );
+ 	leaf = R_PointInLeaf( p2 );
++	if ( leaf->cluster < 0 )
++		return qfalse;
+ 
+ 	if ( !(vis[leaf->cluster>>3] & (1<<(leaf->cluster&7))) ) {
+ 		return qfalse;
+diff --git a/code/renderervk/tr_bsp.c b/code/renderervk/tr_bsp.c
+index 858c43ce86..79fe683e26 100644
+--- a/code/renderervk/tr_bsp.c
++++ b/code/renderervk/tr_bsp.c
+@@ -488,7 +488,7 @@ static void R_LoadVisibility( const lump_t *l ) {
+ 	unsigned numClusters, clusterBytes, len;
+ 	byte	*buf;
+ 
+-	len = PAD( s_worldData.numClusters, 64 );
++	len = PAD( s_worldData.numClusters, 64 ) >> 3;
+ 	s_worldData.novis = ri.Hunk_Alloc( len, h_low );
+ 	Com_Memset( s_worldData.novis, 0xff, len );
+ 
+diff --git a/code/renderervk/tr_world.c b/code/renderervk/tr_world.c
+index 5dc9e16086..46a202529b 100644
+--- a/code/renderervk/tr_world.c
++++ b/code/renderervk/tr_world.c
+@@ -789,8 +789,12 @@ qboolean R_inPVS( const vec3_t p1, const vec3_t p2 ) {
+ 	const byte	*vis;
+ 
+ 	leaf = R_PointInLeaf( p1 );
++	if ( leaf->cluster < 0 )
++		return qfalse;
+ 	vis = ri.CM_ClusterPVS( leaf->cluster );
+ 	leaf = R_PointInLeaf( p2 );
++	if ( leaf->cluster < 0 )
++		return qfalse;
+ 
+ 	if ( !(vis[leaf->cluster>>3] & (1<<(leaf->cluster&7))) ) {
+ 		return qfalse;
+diff --git a/code/server/sv_game.c b/code/server/sv_game.c
+index 32f43c6dae..f75e930471 100644
+--- a/code/server/sv_game.c
++++ b/code/server/sv_game.c
+@@ -158,11 +158,15 @@ qboolean SV_inPVS( const vec3_t p1, const vec3_t p2 )
+ 
+ 	leafnum = CM_PointLeafnum (p1);
+ 	cluster = CM_LeafCluster (leafnum);
++	if ( cluster < 0 )
++		return qfalse;
+ 	area1 = CM_LeafArea (leafnum);
+ 	mask = CM_ClusterPVS (cluster);
+ 
+ 	leafnum = CM_PointLeafnum (p2);
+ 	cluster = CM_LeafCluster (leafnum);
++	if ( cluster < 0 )
++		return qfalse;
+ 	area2 = CM_LeafArea (leafnum);
+ 	if ( mask && (!(mask[cluster>>3] & (1<<(cluster&7)) ) ) )
+ 		return qfalse;
+@@ -187,10 +191,14 @@ static qboolean SV_inPVSIgnorePortals( const vec3_t p1, const vec3_t p2 )
+ 
+ 	leafnum = CM_PointLeafnum (p1);
+ 	cluster = CM_LeafCluster (leafnum);
++	if ( cluster < 0 )
++		return qfalse;
+ 	mask = CM_ClusterPVS (cluster);
+ 
+ 	leafnum = CM_PointLeafnum (p2);
+ 	cluster = CM_LeafCluster (leafnum);
++	if ( cluster < 0 )
++		return qfalse;
+ 
+ 	if ( mask && (!(mask[cluster>>3] & (1<<(cluster&7)) ) ) )
+ 		return qfalse;
+
+From e04f6eab24dd41abcd8b32a0ac9e18cf6cad768c Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 01:32:25 +0300
+Subject: [PATCH 13/18] Fix potential integer overflow.
+
+---
+ code/server/sv_filter.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/code/server/sv_filter.c b/code/server/sv_filter.c
+index fcea72bb6f..3b10bbdb26 100644
+--- a/code/server/sv_filter.c
++++ b/code/server/sv_filter.c
+@@ -689,6 +689,11 @@ static qboolean parse_file( const char *filename )
+ 	fseek( f, 0, SEEK_END );
+ 	size = ftell( f );
+ 	fseek( f, 0, SEEK_SET );
++	if ( size < 0 || size >= INT_MAX )
++	{
++		fclose( f );
++		return qfalse;
++	}
+ 
+ 	data = (char*) Z_Malloc( size + 1 );
+ 	if ( fread( data, size, 1, f ) != 1 )
+
+From 729b845f67b978d908398dd2b7fcda009ba7a0fe Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Mon, 16 Mar 2026 01:32:24 +0300
+Subject: [PATCH 14/18] Use buffer size safe string functions where possible.
+
+---
+ code/client/cl_curl.c   | 8 ++------
+ code/server/sv_filter.c | 8 ++++----
+ code/unix/unix_main.c   | 6 +++---
+ code/win32/win_syscon.c | 4 ++--
+ 4 files changed, 11 insertions(+), 15 deletions(-)
+
+diff --git a/code/client/cl_curl.c b/code/client/cl_curl.c
+index 586db24889..e562057637 100644
+--- a/code/client/cl_curl.c
++++ b/code/client/cl_curl.c
+@@ -104,9 +104,7 @@ qboolean CL_cURL_Init( void )
+ #else
+ 		char fn[1024];
+ 
+-		Q_strncpyz( fn, Sys_Pwd(), sizeof( fn ) );
+-		strncat( fn, "/", sizeof( fn ) - strlen( fn ) - 1 );
+-		strncat( fn, cl_cURLLib->string, sizeof( fn ) - strlen( fn ) - 1 );
++		Com_sprintf(fn, sizeof(fn), "%s/%s", Sys_Pwd(), cl_cURLLib->string);
+ 
+ 		if((cURLLib = Sys_LoadLibrary(fn)) == 0)
+ 		{
+@@ -552,9 +550,7 @@ qboolean Com_DL_Init( download_t *dl )
+ #else
+ 		char fn[1024];
+ 
+-		Q_strncpyz( fn, Sys_Pwd(), sizeof( fn ) );
+-		strncat( fn, "/", sizeof( fn ) - strlen( fn ) - 1 );
+-		strncat( fn, cl_cURLLib->string, sizeof( fn ) - strlen( fn ) - 1 );
++		Com_sprintf(fn, sizeof(fn), "%s/%s", Sys_Pwd(), cl_cURLLib->string);
+ 
+ 		if ( ( dl->func.lib = Sys_LoadLibrary( fn ) ) == NULL )
+ 		{
+diff --git a/code/server/sv_filter.c b/code/server/sv_filter.c
+index 3b10bbdb26..765b7ddf54 100644
+--- a/code/server/sv_filter.c
++++ b/code/server/sv_filter.c
+@@ -234,7 +234,7 @@ static void dump_nodes( const filter_node_t *node, int level, int skip_tagged, F
+ 			{
+ 				if ( node->fop == FOP_LT ) // do not print default action for dates
+ 					s = "";
+-				n = sprintf( buf, "date %s\"%s\"", s, node->p2.string );
++				n = Com_sprintf( buf, sizeof(buf), "date %s\"%s\"", s, node->p2.string );
+ 			}
+ 			else
+ 			{
+@@ -244,13 +244,13 @@ static void dump_nodes( const filter_node_t *node, int level, int skip_tagged, F
+ 				if ( node->is_string )
+ 				{
+ 					if ( node->is_quoted )
+-						n = sprintf( buf, "%s %s\"%s\"", node->p1, s, node->p2.string );
++						n = Com_sprintf( buf, sizeof(buf), "%s %s\"%s\"", node->p1, s, node->p2.string );
+ 					else
+-						n = sprintf( buf, "%s %s%s", node->p1, s, node->p2.string );
++						n = Com_sprintf( buf, sizeof(buf), "%s %s%s", node->p1, s, node->p2.string );
+ 				}
+ 				else
+ 				{
+-					n = sprintf( buf, "%s %s%i", node->p1, s, node->p2.integer );
++					n = Com_sprintf( buf, sizeof(buf), "%s %s%i", node->p1, s, node->p2.integer );
+ 				}
+ 			}
+ 
+diff --git a/code/unix/unix_main.c b/code/unix/unix_main.c
+index 8a2d704e54..1f30a137af 100644
+--- a/code/unix/unix_main.c
++++ b/code/unix/unix_main.c
+@@ -710,20 +710,20 @@ void Sys_ANSIColorify( const char *msg, char *buffer, int bufferSize )
+     if ( msg[ i ] == '\n' )
+     {
+       Com_sprintf( tempBuffer, sizeof( tempBuffer ), "%c[0m\n", 0x1B );
+-      strncat( buffer, tempBuffer, bufferSize - 1 );
++      Q_strcat( buffer, bufferSize, tempBuffer );
+       i += 1;
+     }
+     else if ( msg[ i ] == Q_COLOR_ESCAPE && ( ANSIcolor = getANSIcolor( msg[ i+1 ] ) ) != NULL )
+     {
+       Com_sprintf( tempBuffer, sizeof( tempBuffer ), "%c[%sm", 0x1B, ANSIcolor );
+-      strncat( buffer, tempBuffer, bufferSize - 1 );
++      Q_strcat( buffer, bufferSize, tempBuffer );
+       i += 2;
+     }
+     else
+     {
+       if ( printableChar( msg[ i ] ) ) {
+         Com_sprintf( tempBuffer, sizeof( tempBuffer ), "%c", msg[ i ] );
+-        strncat( buffer, tempBuffer, bufferSize - 1 );
++        Q_strcat( buffer, bufferSize, tempBuffer );
+       }
+       i += 1;
+     }
+diff --git a/code/win32/win_syscon.c b/code/win32/win_syscon.c
+index de7a910cd4..0936539359 100644
+--- a/code/win32/win_syscon.c
++++ b/code/win32/win_syscon.c
+@@ -643,8 +643,8 @@ static LRESULT WINAPI InputLineWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPA
+ 			while ( *s == '\\' || *s == '/' ) // skip leading slashes
+ 				s++;
+ 
+-			strncat( s_wcd.consoleText, s, sizeof( s_wcd.consoleText ) - strlen( s_wcd.consoleText ) - 2 );
+-			strcat( s_wcd.consoleText, "\n" );
++			Q_strcat( s_wcd.consoleText, sizeof( s_wcd.consoleText ), s );
++			Q_strcat( s_wcd.consoleText, sizeof( s_wcd.consoleText ), "\n" );
+ 
+ 			SetWindowText( s_wcd.hwndInputLine, T("") );
+ 			Field_Clear( &console );
+
+From 6c83b575a9d06e166e65e61dac47ed4b6346948b Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Tue, 17 Mar 2026 22:38:38 +0300
+Subject: [PATCH 15/18] Check FS_Read() return value.
+
+Avoid accessing uninitialized memory if reading failure occurs.
+---
+ code/botlib/l_script.c      |  6 +++++-
+ code/client/cl_ui.c         |  1 +
+ code/client/snd_codec_ogg.c |  5 +++++
+ code/client/snd_codec_wav.c | 25 ++++++++++++++++++++-----
+ code/qcommon/files.c        |  9 +++++++--
+ code/qcommon/vm.c           |  8 +++++++-
+ code/server/sv_ccmds.c      |  9 +++++++--
+ code/server/sv_client.c     | 11 ++++++++---
+ 8 files changed, 60 insertions(+), 14 deletions(-)
+
+diff --git a/code/botlib/l_script.c b/code/botlib/l_script.c
+index 62ff907cc3..941806dcbf 100644
+--- a/code/botlib/l_script.c
++++ b/code/botlib/l_script.c
+@@ -1392,7 +1392,11 @@ script_t *LoadScriptFile(const char *filename)
+ 	SetScriptPunctuations(script, NULL);
+ 	//
+ #ifdef BOTLIB
+-	botimport.FS_Read(script->buffer, length, fp);
++	if (botimport.FS_Read(script->buffer, length, fp) != length)
++	{
++		FreeMemory(buffer);
++		script = NULL;
++	}
+ 	botimport.FS_FCloseFile(fp);
+ #else
+ 	if (fread(script->buffer, length, 1, fp) != 1)
+diff --git a/code/client/cl_ui.c b/code/client/cl_ui.c
+index a90ce77e73..028128059c 100644
+--- a/code/client/cl_ui.c
++++ b/code/client/cl_ui.c
+@@ -63,6 +63,7 @@ static void LAN_LoadCachedServers( void ) {
+ 		return;
+ 	}
+ 
++	size = 0;
+ 	FS_Read( &cls.numglobalservers, sizeof(int), fileIn );
+ 	FS_Read( &cls.numfavoriteservers, sizeof(int), fileIn );
+ 	FS_Read( &size, sizeof(int), fileIn );
+diff --git a/code/client/snd_codec_ogg.c b/code/client/snd_codec_ogg.c
+index e06b7b1248..56f0370a71 100644
+--- a/code/client/snd_codec_ogg.c
++++ b/code/client/snd_codec_ogg.c
+@@ -87,6 +87,11 @@ size_t S_OGG_Callback_read( void *ptr, size_t size, size_t nmemb, void *datasour
+ 
+ 	// read it with the Q3 function FS_Read()
+ 	bytesRead = FS_Read(ptr, byteSize, stream->file);
++	if (bytesRead < 0)
++	{
++		errno = EIO;
++		return 0;
++	}
+ 
+ 	// update the file position
+ 	stream->pos += bytesRead;
+diff --git a/code/client/snd_codec_wav.c b/code/client/snd_codec_wav.c
+index 0920f5e522..aee1f16b52 100644
+--- a/code/client/snd_codec_wav.c
++++ b/code/client/snd_codec_wav.c
+@@ -32,7 +32,8 @@ FGetLittleLong
+ static int FGetLittleLong( fileHandle_t f ) {
+ 	int		v;
+ 
+-	FS_Read( &v, sizeof(v), f );
++	if (FS_Read( &v, sizeof(v), f ) != sizeof(v))
++		return -1;
+ 
+ 	return LittleLong( v);
+ }
+@@ -45,7 +46,8 @@ FGetLittleShort
+ static short FGetLittleShort( fileHandle_t f ) {
+ 	short	v;
+ 
+-	FS_Read( &v, sizeof(v), f );
++	if (FS_Read( &v, sizeof(v), f ) != sizeof(v))
++		return -1;
+ 
+ 	return LittleShort( v);
+ }
+@@ -140,7 +142,11 @@ static qboolean S_ReadRIFFHeader(fileHandle_t file, snd_info_t *info)
+ 	int fmtlen = 0;
+ 
+ 	// skip the riff wav header
+-	FS_Read(dump, 12, file);
++	if (FS_Read(dump, 12, file) != 12)
++	{
++		Com_Printf( S_COLOR_RED "ERROR: Couldn't read header\n");
++		return qfalse;
++	}
+ 
+ 	// Scan for the format chunk
+ 	if((fmtlen = S_FindRIFFChunk(file, "fmt ")) < 0)
+@@ -232,7 +238,14 @@ void *S_WAV_CodecLoad(const char *filename, snd_info_t *info)
+ 	}
+ 
+ 	// Read, byteswap
+-	FS_Read(buffer, info->size, file);
++	if (FS_Read(buffer, info->size, file) != info->size)
++	{
++		Hunk_FreeTempMemory(buffer);
++		FS_FCloseFile(file);
++		Com_Printf( S_COLOR_RED "ERROR: Couldn't read \"%s\"\n", filename);
++		return NULL;
++	}
++
+ 	S_ByteSwapRawSamples(info->samples, info->width, info->channels, (byte *)buffer);
+ 
+ 	// Close and return
+@@ -288,9 +301,11 @@ int S_WAV_CodecReadStream(snd_stream_t *stream, int bytes, void *buffer)
+ 		return 0;
+ 	if(bytes > remaining)
+ 		bytes = remaining;
++	bytes = FS_Read(buffer, bytes, stream->file);
++	if (bytes <= 0)
++		return 0;
+ 	stream->pos += bytes;
+ 	samples = (bytes / stream->info.width) / stream->info.channels;
+-	FS_Read(buffer, bytes, stream->file);
+ 	S_ByteSwapRawSamples(samples, stream->info.width, stream->info.channels, buffer);
+ 	return bytes;
+ }
+diff --git a/code/qcommon/files.c b/code/qcommon/files.c
+index bdf4770725..45e17c5590 100644
+--- a/code/qcommon/files.c
++++ b/code/qcommon/files.c
+@@ -2180,9 +2180,14 @@ int FS_ReadFile( const char *qpath, void **buffer ) {
+ 	}
+ 
+ 	buf = Hunk_AllocateTempMemory( len + 1 );
+-	*buffer = buf;
+ 
+-	FS_Read( buf, len, h );
++	if ( FS_Read( buf, len, h ) != len ) {
++		Hunk_FreeTempMemory( buf );
++		FS_FCloseFile( h );
++		return -1;
++	}
++
++	*buffer = buf;
+ 
+ 	fs_loadCount++;
+ 	fs_loadStack++;
+diff --git a/code/qcommon/vm.c b/code/qcommon/vm.c
+index c36ca401ac..10c52fd15d 100644
+--- a/code/qcommon/vm.c
++++ b/code/qcommon/vm.c
+@@ -639,7 +639,13 @@ static int Load_JTS( vm_t *vm, uint32_t crc32, void *data, int vmPakIndex ) {
+ 		return length;
+ 	}
+ 
+-	FS_Read( data, length, fh );
++	if ( FS_Read( data, length, fh ) != length ) {
++		if ( data )
++			Com_Printf( " error reading %s.\n", filename );
++		FS_FCloseFile( fh );
++		return -1;
++	}
++
+ 	FS_FCloseFile( fh );
+ 
+ 	// byte swap the data
+diff --git a/code/server/sv_ccmds.c b/code/server/sv_ccmds.c
+index 37cc7cc1e2..bfbb68eef9 100644
+--- a/code/server/sv_ccmds.c
++++ b/code/server/sv_ccmds.c
+@@ -654,7 +654,7 @@ Load saved bans from file.
+ */
+ static void SV_RehashBans_f(void)
+ {
+-	int index, filelen;
++	int index, filelen, res;
+ 	fileHandle_t readfrom;
+ 	char *textbuf, *curpos, *maskpos, *newlinepos;
+ 	const char *endpos;
+@@ -683,8 +683,13 @@ static void SV_RehashBans_f(void)
+ 
+ 		curpos = textbuf = Z_Malloc(filelen);
+ 		
+-		filelen = FS_Read(textbuf, filelen, readfrom);
++		res = FS_Read(textbuf, filelen, readfrom);
+ 		FS_FCloseFile(readfrom);
++
++		if (res != filelen) {
++			Z_Free(textbuf);
++			return;
++		}
+ 		
+ 		endpos = textbuf + filelen;
+ 		
+diff --git a/code/server/sv_client.c b/code/server/sv_client.c
+index df65e1cd11..ffc4898010 100644
+--- a/code/server/sv_client.c
++++ b/code/server/sv_client.c
+@@ -254,7 +254,7 @@ static qboolean SV_LoadIP4DB( const char *filename )
+ 	fileHandle_t fh = FS_INVALID_HANDLE;
+ 	uint32_t last_ip;
+ 	void *buf;
+-	int len, i;
++	int len, res, i;
+ 
+ 	len = FS_SV_FOpenFileRead( filename, &fh );
+ 
+@@ -277,9 +277,14 @@ static qboolean SV_LoadIP4DB( const char *filename )
+ 
+ 	buf = Z_Malloc( len );
+ 
+-	FS_Read( buf, len, fh );
++	res = FS_Read( buf, len, fh );
+ 	FS_FCloseFile( fh );
+ 
++	if ( res != len ) {
++		Z_Free( buf );
++		return qfalse;
++	}
++
+ 	// check integrity of loaded database
+ 	last_ip = 0;
+ 	num_tlds = len / 10;
+@@ -1444,7 +1449,7 @@ static int SV_WriteDownloadToClient( client_t *cl )
+ 
+ 		cl->downloadBlockSize[curindex] = FS_Read( cl->downloadBlocks[curindex], MAX_DOWNLOAD_BLKSIZE, cl->download );
+ 
+-		if (cl->downloadBlockSize[curindex] < 0) {
++		if (cl->downloadBlockSize[curindex] <= 0) {
+ 			// EOF right now
+ 			cl->downloadCount = cl->downloadSize;
+ 			break;
+
+From 42df71336f179de10f8bcfecc090fec3fe1ab066 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Tue, 17 Mar 2026 22:54:20 +0300
+Subject: [PATCH 16/18] Forbid reading/writing negative amount of bytes.
+
+It will wrap to huge size_t value and write past end of buffer.
+---
+ code/client/cl_main.c | 2 +-
+ code/qcommon/files.c  | 8 ++++++++
+ 2 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/code/client/cl_main.c b/code/client/cl_main.c
+index 01ab8e2f30..d84487f5f7 100644
+--- a/code/client/cl_main.c
++++ b/code/client/cl_main.c
+@@ -730,7 +730,7 @@ void CL_ReadDemoMessage( void ) {
+ 		return;
+ 	}
+ 	buf.cursize = LittleLong( buf.cursize );
+-	if ( buf.cursize == -1 ) {
++	if ( buf.cursize < 0 ) {
+ 		CL_DemoCompleted();
+ 		return;
+ 	}
+diff --git a/code/qcommon/files.c b/code/qcommon/files.c
+index 45e17c5590..598f78df7c 100644
+--- a/code/qcommon/files.c
++++ b/code/qcommon/files.c
+@@ -1811,6 +1811,10 @@ int FS_Read( void *buffer, int len, fileHandle_t f ) {
+ 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
+ 	}
+ 
++	if ( len < 0 ) {
++		Com_Error( ERR_FATAL, "FS_Read: len < 0");
++	}
++
+ 	if ( f <= 0 || f >= MAX_FILE_HANDLES ) {
+ 		return 0;
+ 	}
+@@ -1866,6 +1870,10 @@ int FS_Write( const void *buffer, int len, fileHandle_t h ) {
+ 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
+ 	}
+ 
++	if ( len < 0 ) {
++		Com_Error( ERR_FATAL, "FS_Write: len < 0");
++	}
++
+ 	//if ( h <= 0 || h >= MAX_FILE_HANDLES ) {
+ 	//	return 0;
+ 	//}
+
+From 502fc1a05324fb0e9a357728a6684c6cd773e778 Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Thu, 19 Mar 2026 11:42:42 +0300
+Subject: [PATCH 17/18] Validate entity number passed to sound functions.
+
+---
+ code/client/snd_dma.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/code/client/snd_dma.c b/code/client/snd_dma.c
+index 46f0c33129..52246424d7 100644
+--- a/code/client/snd_dma.c
++++ b/code/client/snd_dma.c
+@@ -680,6 +680,9 @@ continuous looping sounds are added each frame
+ */
+ 
+ void S_Base_StopLoopingSound(int entityNum) {
++	if ( entityNum < 0 || entityNum >= MAX_GENTITIES ) {
++		Com_Error( ERR_DROP, "S_StopLoopingSound: bad entitynum %i", entityNum );
++	}
+ 	loopSounds[entityNum].active = qfalse;
+ //	loopSounds[entityNum].sfx = 0;
+ 	loopSounds[entityNum].kill = qfalse;
+@@ -717,6 +720,10 @@ void S_Base_AddLoopingSound( int entityNum, const vec3_t origin, const vec3_t ve
+ 		return;
+ 	}
+ 
++	if ( entityNum < 0 || entityNum >= MAX_GENTITIES ) {
++		Com_Error( ERR_DROP, "S_AddLoopingSound: bad entitynum %i", entityNum );
++	}
++
+ 	if ( sfxHandle < 0 || sfxHandle >= s_numSfx ) {
+ 		Com_Printf( S_COLOR_YELLOW "S_AddLoopingSound: handle %i out of range\n", sfxHandle );
+ 		return;
+@@ -781,6 +788,10 @@ void S_Base_AddRealLoopingSound( int entityNum, const vec3_t origin, const vec3_
+ 		return;
+ 	}
+ 
++	if ( entityNum < 0 || entityNum >= MAX_GENTITIES ) {
++		Com_Error( ERR_DROP, "S_AddRealLoopingSound: bad entitynum %i", entityNum );
++	}
++
+ 	if ( sfxHandle < 0 || sfxHandle >= s_numSfx ) {
+ 		Com_Printf( S_COLOR_YELLOW "S_AddRealLoopingSound: handle %i out of range\n", sfxHandle );
+ 		return;
+@@ -1028,6 +1039,10 @@ void S_Base_Respatialize( int entityNum, const vec3_t head, vec3_t axis[3], int
+ 		return;
+ 	}
+ 
++	if ( entityNum < 0 || entityNum >= MAX_GENTITIES ) {
++		Com_Error( ERR_DROP, "S_Respatialize: bad entitynum %i", entityNum );
++	}
++
+ 	listener_number = entityNum;
+ 	VectorCopy(head, listener_origin);
+ 	VectorCopy(axis[0], listener_axis[0]);
+
+From 9ce93056cc038e3b58d61ab2f495a240f8b62e0d Mon Sep 17 00:00:00 2001
+From: skullernet <255839533+skullernet@users.noreply.github.com>
+Date: Fri, 20 Mar 2026 21:40:34 +0300
+Subject: [PATCH 18/18] Add missing CG_CM_MARKFRAGMENTS syscall bounds checks.
+
+Also fix possible integer overflow in G_ENTITIES_IN_BOX syscall bounds
+check.
+---
+ code/client/cl_cgame.c |  3 +++
+ code/qcommon/qcommon.h |  3 +++
+ code/qcommon/vm.c      | 17 +++++++++++++++++
+ code/server/sv_game.c  |  2 +-
+ 4 files changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/code/client/cl_cgame.c b/code/client/cl_cgame.c
+index 3213da4dff..1a6a4feb48 100644
+--- a/code/client/cl_cgame.c
++++ b/code/client/cl_cgame.c
+@@ -562,6 +562,9 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
+ 		CM_TransformedBoxTrace( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5), args[6], args[7], VMA(8), VMA(9), /*int capsule*/ qtrue );
+ 		return 0;
+ 	case CG_CM_MARKFRAGMENTS:
++		VM_CHECKBOUNDS3( cgvm, args[2], args[1], sizeof( vec3_t ) );
++		VM_CHECKBOUNDS3( cgvm, args[5], args[4], sizeof( vec3_t ) );
++		VM_CHECKBOUNDS3( cgvm, args[7], args[6], sizeof( markFragment_t ) );
+ 		return re.MarkFragments( args[1], VMA(2), VMA(3), args[4], VMA(5), args[6], VMA(7) );
+ 	case CG_S_STARTSOUND:
+ 		S_StartSound( VMA(1), args[2], args[3], args[4] );
+diff --git a/code/qcommon/qcommon.h b/code/qcommon/qcommon.h
+index e1ee786f66..acb25d30ec 100644
+--- a/code/qcommon/qcommon.h
++++ b/code/qcommon/qcommon.h
+@@ -413,13 +413,16 @@ intptr_t	QDECL VM_Call( vm_t *vm, int nargs, int callNum, ... );
+ void	VM_Debug( int level );
+ void	VM_CheckBounds( const vm_t *vm, unsigned int address, unsigned int length );
+ void	VM_CheckBounds2( const vm_t *vm, unsigned int addr1, unsigned int addr2, unsigned int length );
++void	VM_CheckBounds3( const vm_t *vm, unsigned int address, unsigned int count, unsigned int size );
+ 
+ #if 1
+ #define VM_CHECKBOUNDS VM_CheckBounds
+ #define VM_CHECKBOUNDS2 VM_CheckBounds2
++#define VM_CHECKBOUNDS3 VM_CheckBounds3
+ #else // for performance evaluation purposes
+ #define VM_CHECKBOUNDS(vm,a,b)
+ #define VM_CHECKBOUNDS2(vm,a,b,c)
++#define VM_CHECKBOUNDS3(vm,a,b,c)
+ #endif
+ 
+ void	*GVM_ArgPtr( intptr_t intValue );
+diff --git a/code/qcommon/vm.c b/code/qcommon/vm.c
+index 10c52fd15d..70f1cbb0ee 100644
+--- a/code/qcommon/vm.c
++++ b/code/qcommon/vm.c
+@@ -263,6 +263,23 @@ void VM_CheckBounds2( const vm_t *vm, unsigned int addr1, unsigned int addr2, un
+ }
+ 
+ 
++/*
++==============
++VM_CheckBounds3
++==============
++*/
++void VM_CheckBounds3( const vm_t *vm, unsigned int address, unsigned int count, unsigned int size )
++{
++	//if ( !vm->entryPoint )
++	{
++		if ( (uint64_t)address + (uint64_t)count * size > vm->dataMask )
++		{
++			Com_Error( ERR_DROP, "program tried to bypass data segment bounds" );
++		}
++	}
++}
++
++
+ /*
+ ==============
+ VM_Init
+diff --git a/code/server/sv_game.c b/code/server/sv_game.c
+index f75e930471..d577a38563 100644
+--- a/code/server/sv_game.c
++++ b/code/server/sv_game.c
+@@ -458,7 +458,7 @@ static intptr_t SV_GameSystemCalls( intptr_t *args ) {
+ 		SV_UnlinkEntity( VMA(1) );
+ 		return 0;
+ 	case G_ENTITIES_IN_BOX:
+-		VM_CHECKBOUNDS( gvm, args[3], args[4] * sizeof( int ) );
++		VM_CHECKBOUNDS3( gvm, args[3], args[4], sizeof( int ) );
+ 		return SV_AreaEntities( VMA(1), VMA(2), VMA(3), args[4] );
+ 	case G_ENTITY_CONTACT:
+ 		return SV_EntityContact( VMA(1), VMA(2), VMA(3), /*int capsule*/ qfalse );
