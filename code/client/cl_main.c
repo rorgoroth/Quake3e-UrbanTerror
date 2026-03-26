@@ -807,7 +807,7 @@ void CL_ReadDemoMessage( void ) {
 		return;
 	}
 	buf.cursize = LittleLong( buf.cursize );
-	if ( buf.cursize == -1 ) {
+	if ( buf.cursize < 0 ) {
 		CL_DemoCompleted();
 		return;
 	}
@@ -3572,7 +3572,7 @@ void CL_StartHunkUsers( void ) {
 CL_RefMalloc
 ============
 */
-static void *CL_RefMalloc( int size ) {
+static void *CL_RefMalloc( size_t size ) {
 	return Z_TagMalloc( size, TAG_RENDERER );
 }
 
