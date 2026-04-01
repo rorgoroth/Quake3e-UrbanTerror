@@ -48,7 +48,7 @@ static int SV_CreateChallenge( int timestamp, const netadr_t *from )
 	// The most-significant bit stores whether the timestamp is odd or even. This lets later verification code handle the
 	// case where the engine timestamp has incremented between the time this challenge is sent and the client replies.
 	challenge = Com_MD5Addr( from, timestamp );
-	challenge &= 0x7FFFFFFF;
+	challenge &= (1U << 31) - 1;
 	challenge |= (unsigned int)(timestamp & 0x1) << 31;
 
 	return challenge;
@@ -2234,7 +2234,7 @@ static void SV_UserMove( client_t *cl, msg_t *msg, qboolean delta ) {
 	if ( cl->state == CS_PRIMED ) {
 		if ( sv_pure->integer != 0 && !cl->gotCP ) {
 			// we didn't get a cp yet, don't assume anything and just send the gamestate all over again
-			if ( !SVC_RateLimit( &cl->gamestate_rate, 4, 1000 ) ) {
+			if ( cl->netchan.remoteAddress.type == NA_LOOPBACK || !SVC_RateLimit( &cl->gamestate_rate, 1, 1000 ) ) {
 				Com_DPrintf( "%s: didn't get cp command, resending gamestate\n", cl->name );
 				SV_SendClientGameState( cl );
 			}
