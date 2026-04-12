@@ -413,7 +413,7 @@ static void emit_modrm_offset( uint32_t reg, int32_t offset )
 {
 	modrm_t modrm;
 
-	modrm.s.mod = MOD_DISP4_ONLY_RM_5; // displacement-only mode with ( r_m == 0x5 )	
+	modrm.s.mod = MOD_DISP4_ONLY_RM_5; // displacement-only mode with ( r_m == 0x5 )
 	modrm.s.r_m = 5; // 101
 	modrm.s.r_x = reg;
 
@@ -445,7 +445,7 @@ static void emit_modrm_base_offset( uint32_t reg, uint32_t base, int32_t offset 
 			}
 		}
 	} else {
-		modrm.s.mod = MOD_DISP4; // 4-byte displacement	
+		modrm.s.mod = MOD_DISP4; // 4-byte displacement
 		Emit1( modrm.v );
 		if ( modrm.s.r_m == 0x4 /* 100 */ ) {
 			Emit1( 0x24 ); // SIB: 00:100:100
@@ -472,7 +472,7 @@ static void emit_modrm_base_index( uint32_t reg, uint32_t base, uint32_t index, 
 
 	modrm.s.r_x = reg;
 	modrm.s.r_m = 4; // 100
-	
+
 	if ( disp == 0 ) {
 		if ( sib.s.base == 5 /* 101 */ ) {
 			modrm.s.mod = MOD_DISP1; // dummy 1-byte displacement
@@ -1936,7 +1936,7 @@ static void emit_CheckProc( vm_t *vm, instruction_t *ins )
 
 		// proc->opStack carries max.used opStack value
 		emit_lea( rx | R_REX, R_OPSTACK, ins->opStack ); // rdx = opStack + max.opStack
-		
+
 		// check if rdx > opstackTop
 #if idx64
 		emit_cmp_rx( rx | R_REX, R_OPSTACKTOP );			// cmp rdx, opStackTop
@@ -2146,7 +2146,7 @@ static void EmitFloatJump( instruction_t *i, int op, int addr )
 			break;
 
 		case OP_NEF:
-			EmitString( "80 E4 40" );	// and ah,0x40 
+			EmitString( "80 E4 40" );	// and ah,0x40
 			EmitJump( i, OP_EQ, addr );
 			break;
 
@@ -2500,7 +2500,7 @@ static qboolean ConstOptimize( vm_t *vm, instruction_t *ci, instruction_t *ni )
 			emit_pop( R_OPSTACK );	// pop edi
 			ip += 1; // OP_CALL
 			return qtrue;
-		}	
+		}
 
 		case OP_JUMP:
 			flush_volatile();
@@ -2845,7 +2845,7 @@ __compile:
 	EmitCallOffset( FUNC_ENTR );
 
 #ifdef DEBUG_VM
-	emit_store_rx_offset( R_PSTACK, (intptr_t) &vm->programStack ); // mov [&vm->programStack], esi 
+	emit_store_rx_offset( R_PSTACK, (intptr_t) &vm->programStack ); // mov [&vm->programStack], esi
 #endif
 
 	// emit_store_rx_offset( R_OPSTACK, (intptr_t) &vm->opStack ); // // [&vm->opStack], edi
@@ -3117,8 +3117,8 @@ __compile:
 						switch ( ci->op ) {
 							case OP_LOAD1:
 								if ( reg->ext != Z_EXT8 ) {
-									emit_zex8( rx[0], rx[0] );  // movzx eax, al 
-									// invalidate any mappings that overlaps with high [8..31] bits 
+									emit_zex8( rx[0], rx[0] );  // movzx eax, al
+									// invalidate any mappings that overlaps with high [8..31] bits
 									//var.addr += 1; var.size = 3;
 									//wipe_reg_range( rx_regs + rx[0], &var );
 									reduce_map_size( reg, 1 );
@@ -3127,7 +3127,7 @@ __compile:
 							case OP_LOAD2:
 								if ( reg->ext != Z_EXT16 ) {
 									emit_zex16( rx[0], rx[0] );  // movzx eax, ax
-									// invalidate any mappings that overlaps with high [16..31] bits 
+									// invalidate any mappings that overlaps with high [16..31] bits
 									//var.addr += 2; var.size = 2;
 									//wipe_reg_range( rx_regs + rx[0], &var );
 									reduce_map_size( reg, 2 );

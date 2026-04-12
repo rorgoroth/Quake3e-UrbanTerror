@@ -1027,7 +1027,7 @@ static void IN_JoyMove( void )
 			{
 				Sint16 axis = SDL_JoystickGetAxis(stick, i);
 				float f = ( (float) abs(axis) ) / 32767.0f;
-				
+
 				if( f < in_joystickThreshold->value ) axis = 0;
 
 				if ( axis != stick_state.oldaaxes[i] )
@@ -1097,7 +1097,7 @@ static const char *eventName( SDL_WindowEventID event )
 		case SDL_WINDOWEVENT_FOCUS_LOST: return "FOCUS_LOST";
 		case SDL_WINDOWEVENT_CLOSE: return "CLOSE";
 		case SDL_WINDOWEVENT_TAKE_FOCUS: return "TAKE_FOCUS";
-		case SDL_WINDOWEVENT_HIT_TEST: return "HIT_TEST"; 
+		case SDL_WINDOWEVENT_HIT_TEST: return "HIT_TEST";
 		default:
 			sprintf( buf, "EVENT#%i", event );
 			return buf;

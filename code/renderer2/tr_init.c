@@ -263,11 +263,11 @@ static void InitOpenGL( void )
 	//		- r_ignorehwgamma
 	//		- r_gamma
 	//
-	
+
 	if ( glConfig.vidWidth == 0 )
 	{
 		GLint		temp;
-		
+
 		if ( !ri.GLimp_Init )
 		{
 			ri.Error( ERR_FATAL, "OpenGL interface is not initialized" );
@@ -286,7 +286,7 @@ static void InitOpenGL( void )
 		glConfig.maxTextureSize = temp;
 
 		// stubbed or broken drivers may have reported 0...
-		if ( glConfig.maxTextureSize <= 0 ) 
+		if ( glConfig.maxTextureSize <= 0 )
 		{
 			glConfig.maxTextureSize = 0;
 		}
@@ -359,10 +359,10 @@ void GL_CheckErrs( char *file, int line ) {
 }
 
 
-/* 
-============================================================================== 
- 
-						SCREEN SHOTS 
+/*
+==============================================================================
+
+						SCREEN SHOTS
 
 NOTE TTimo
 some thoughts about the screenshots system:
@@ -375,11 +375,11 @@ we use statics to store a count and start writing the first screenshot/screensho
 (with FS_FileExists / FS_FOpenFileWrite calls)
 FIXME: the statics don't get a reinit between fs_game changes
 
-============================================================================== 
-*/ 
+==============================================================================
+*/
 
-/* 
-================== 
+/*
+==================
 RB_ReadPixels
 
 Reads an image but takes care of alignment issues for reading RGB images.
@@ -392,51 +392,51 @@ alignment of packAlign to ensure efficient copying.
 Stores the length of padding after a line of pixels to address padlen
 
 Return value must be freed with ri.Hunk_FreeTempMemory()
-================== 
-*/  
+==================
+*/
 
 static byte *RB_ReadPixels(int x, int y, int width, int height, size_t *offset, int *padlen)
 {
 	byte *buffer, *bufstart;
 	int padwidth, linelen;
 	GLint packAlign;
-	
+
 	qglGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
-	
+
 	linelen = width * 3;
 	padwidth = PAD(linelen, packAlign);
-	
+
 	// Allocate a few more bytes so that we can choose an alignment we like
 	buffer = ri.Hunk_AllocateTempMemory(padwidth * height + *offset + packAlign - 1);
-	
+
 	bufstart = PADP((intptr_t) buffer + *offset, packAlign);
 
 	qglReadPixels(x, y, width, height, GL_RGB, GL_UNSIGNED_BYTE, bufstart);
-	
+
 	*offset = bufstart - buffer;
 	*padlen = padwidth - linelen;
-	
+
 	return buffer;
 }
 
-/* 
-================== 
+/*
+==================
 RB_TakeScreenshot
-================== 
-*/  
+==================
+*/
 static void RB_TakeScreenshot(int x, int y, int width, int height, const char *fileName)
 {
 	byte *allbuf, *buffer;
 	byte *srcptr, *destptr;
 	byte *endline, *endmem;
 	byte temp;
-	
+
 	int linelen, padlen;
 	size_t offset = 18, memcount;
-		
+
 	allbuf = RB_ReadPixels(x, y, width, height, &offset, &padlen);
 	buffer = allbuf + offset - 18;
-	
+
 	Com_Memset (buffer, 0, 18);
 	buffer[2] = 2;		// uncompressed type
 	buffer[12] = width & 255;
@@ -447,10 +447,10 @@ static void RB_TakeScreenshot(int x, int y, int width, int height, const char *f
 
 	// swap rgb to bgr and remove padding from line endings
 	linelen = width * 3;
-	
+
 	srcptr = destptr = allbuf + offset;
 	endmem = srcptr + (linelen + padlen) * height;
-	
+
 	while(srcptr < endmem)
 	{
 		endline = srcptr + linelen;
@@ -461,10 +461,10 @@ static void RB_TakeScreenshot(int x, int y, int width, int height, const char *f
 			*destptr++ = srcptr[2];
 			*destptr++ = srcptr[1];
 			*destptr++ = temp;
-			
+
 			srcptr += 3;
 		}
-		
+
 		// Skip the pad
 		srcptr += padlen;
 	}
@@ -480,10 +480,10 @@ static void RB_TakeScreenshot(int x, int y, int width, int height, const char *f
 	ri.Hunk_FreeTempMemory(allbuf);
 }
 
-/* 
-================== 
+/*
+==================
 RB_TakeScreenshotJPEG
-================== 
+==================
 */
 
 static void RB_TakeScreenshotJPEG(int x, int y, int width, int height, const char *fileName)
@@ -510,7 +510,7 @@ RB_TakeScreenshotCmd
 */
 const void *RB_TakeScreenshotCmd( const void *data ) {
 	const screenshotCommand_t	*cmd;
-	
+
 	cmd = (const screenshotCommand_t *)data;
 
 	// finish any 2D drawing if needed
@@ -521,8 +521,8 @@ const void *RB_TakeScreenshotCmd( const void *data ) {
 		RB_TakeScreenshotJPEG( cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName);
 	else
 		RB_TakeScreenshot( cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName);
-	
-	return (const void *)(cmd + 1);	
+
+	return (const void *)(cmd + 1);
 }
 
 /*
@@ -549,11 +549,11 @@ static void R_TakeScreenshot( int x, int y, int width, int height, char *name, q
 	cmd->jpeg = jpeg;
 }
 
-/* 
-================== 
+/*
+==================
 R_ScreenshotFilename
-================== 
-*/  
+==================
+*/
 static void R_ScreenshotFilename( int lastNumber, char *fileName ) {
 	int		a,b,c,d;
 
@@ -574,11 +574,11 @@ static void R_ScreenshotFilename( int lastNumber, char *fileName ) {
 		, a, b, c, d );
 }
 
-/* 
-================== 
+/*
+==================
 R_ScreenshotFilename
-================== 
-*/  
+==================
+*/
 static void R_ScreenshotFilenameJPEG( int lastNumber, char *fileName ) {
 	int		a,b,c,d;
 
@@ -666,8 +666,8 @@ static void R_LevelShot( void ) {
 	ri.Printf( PRINT_ALL, "Wrote %s\n", checkname );
 }
 
-/* 
-================== 
+/*
+==================
 R_ScreenShot_f
 
 screenshot
@@ -676,8 +676,8 @@ screenshot [levelshot]
 screenshot [filename]
 
 Doesn't print the pacifier message if there is a second arg
-================== 
-*/  
+==================
+*/
 static void R_ScreenShot_f (void) {
 	char	checkname[MAX_OSPATH];
 	static	int	lastNumber = -1;
@@ -717,7 +717,7 @@ static void R_ScreenShot_f (void) {
 		}
 
 		if ( lastNumber >= 9999 ) {
-			ri.Printf (PRINT_ALL, "ScreenShot: Couldn't create a file\n"); 
+			ri.Printf (PRINT_ALL, "ScreenShot: Couldn't create a file\n");
 			return;
  		}
 
@@ -729,7 +729,7 @@ static void R_ScreenShot_f (void) {
 	if ( !silent ) {
 		ri.Printf (PRINT_ALL, "Wrote %s\n", checkname);
 	}
-} 
+}
 
 static void R_ScreenShotJPEG_f (void) {
 	char		checkname[MAX_OSPATH];
@@ -770,7 +770,7 @@ static void R_ScreenShotJPEG_f (void) {
 		}
 
 		if ( lastNumber == 10000 ) {
-			ri.Printf (PRINT_ALL, "ScreenShot: Couldn't create a file\n"); 
+			ri.Printf (PRINT_ALL, "ScreenShot: Couldn't create a file\n");
 			return;
  		}
 
@@ -782,7 +782,7 @@ static void R_ScreenShotJPEG_f (void) {
 	if ( !silent ) {
 		ri.Printf (PRINT_ALL, "Wrote %s\n", checkname);
 	}
-} 
+}
 
 //============================================================================
 
@@ -833,7 +833,7 @@ const void *RB_TakeVideoFrameCmd( const void *data )
 		RB_EndSurface();
 
 	cmd = (const videoFrameCommand_t *)data;
-	
+
 	qglGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
 
 	linelen = cmd->width * 3;
@@ -846,7 +846,7 @@ const void *RB_TakeVideoFrameCmd( const void *data )
 	avipadlen = avipadwidth - linelen;
 
 	cBuf = PADP(cmd->captureBuffer, packAlign);
-		
+
 	qglReadPixels(0, 0, cmd->width, cmd->height, GL_RGB,
 		GL_UNSIGNED_BYTE, cBuf);
 
@@ -867,11 +867,11 @@ const void *RB_TakeVideoFrameCmd( const void *data )
 	{
 		byte *lineend, *memend;
 		byte *srcptr, *destptr;
-	
+
 		srcptr = cBuf;
 		destptr = cmd->encodeBuffer;
 		memend = srcptr + memcount;
-		
+
 		// swap R and B and remove line paddings
 		while(srcptr < memend)
 		{
@@ -883,17 +883,17 @@ const void *RB_TakeVideoFrameCmd( const void *data )
 				*destptr++ = srcptr[0];
 				srcptr += 3;
 			}
-			
+
 			Com_Memset(destptr, '\0', avipadlen);
 			destptr += avipadlen;
-			
+
 			srcptr += padlen;
 		}
-		
+
 		ri.CL_WriteAVIVideoFrame(cmd->encodeBuffer, avipadwidth * cmd->height);
 	}
 
-	return (const void *)(cmd + 1);	
+	return (const void *)(cmd + 1);
 }
 
 //============================================================================
@@ -978,7 +978,7 @@ static void R_PrintLongString(const char *string) {
 GfxInfo_f
 ================
 */
-static void GfxInfo_f( void ) 
+static void GfxInfo_f( void )
 {
 	const char *enablestrings[] =
 	{
@@ -1037,7 +1037,7 @@ static void GfxInfo_f( void )
 	ri.Printf( PRINT_ALL, "texture bits: %d\n", r_texturebits->integer );
 	ri.Printf( PRINT_ALL, "texenv add: %s\n", enablestrings[glConfig.textureEnvAddAvailable != 0] );
 	ri.Printf( PRINT_ALL, "compressed textures: %s\n", enablestrings[glConfig.textureCompression!=TC_NONE] );
-	
+
 	if ( r_finish->integer ) {
 		ri.Printf( PRINT_ALL, "Forcing glFinish\n" );
 	}
@@ -1049,7 +1049,7 @@ static void GfxInfo_f( void )
 GfxMemInfo_f
 ================
 */
-static void GfxMemInfo_f( void ) 
+static void GfxMemInfo_f( void )
 {
 	switch (glRefConfig.memInfo)
 	{
@@ -1102,7 +1102,7 @@ static void GfxMemInfo_f( void )
 R_Register
 ===============
 */
-static void R_Register( void ) 
+static void R_Register( void )
 {
 	//
 	// latched and archived variables
@@ -1435,7 +1435,7 @@ static void RE_SyncRender( void )
 R_Init
 ===============
 */
-void R_Init( void ) {	
+void R_Init( void ) {
 	int	err;
 	int i;
 	byte *ptr;
@@ -1623,7 +1623,7 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	Com_Memset( &re, 0, sizeof( re ) );
 
 	if ( apiVersion != REF_API_VERSION ) {
-		ri.Printf(PRINT_ALL, "Mismatched REF_API_VERSION: expected %i, got %i\n", 
+		ri.Printf(PRINT_ALL, "Mismatched REF_API_VERSION: expected %i, got %i\n",
 			REF_API_VERSION, apiVersion );
 		return NULL;
 	}

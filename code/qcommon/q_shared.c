@@ -42,7 +42,7 @@ COM_SkipPath
 const char *COM_SkipPath (const char *pathname)
 {
 	const char	*last;
-	
+
 	last = pathname;
 	while (*pathname)
 	{
@@ -98,18 +98,18 @@ string compare the end of the strings and return qtrue if strings match
 qboolean COM_CompareExtension(const char *in, const char *ext)
 {
 	int inlen, extlen;
-	
+
 	inlen = strlen(in);
 	extlen = strlen(ext);
-	
+
 	if(extlen <= inlen)
 	{
 		in += inlen - extlen;
-		
+
 		if(!Q_stricmp(in, ext))
 			return qtrue;
 	}
-	
+
 	return qfalse;
 }
 
@@ -184,11 +184,11 @@ unsigned long Com_GenerateHashValue( const char *fname, const unsigned int size 
 
 	s = (byte*)fname;
 	hash = 0;
-	
+
 	while ( (c = hash_locase[(byte)*s++]) != '\0' ) {
 		hash = hash * 101 + c;
 	}
-	
+
 	hash = (hash ^ (hash >> 10) ^ (hash >> 20));
 	hash &= (size-1);
 
@@ -208,12 +208,12 @@ int Com_Split( char *in, char **out, int outsz, int delim )
 	// skip leading spaces
 	if ( delim >= ' ' ) {
 		while( (c = *in) != '\0' && c <= ' ' )
-			in++; 
+			in++;
 	}
 	*out = in; out++;
 	while( out < end ) {
 		while( (c = *in) != '\0' && c != delim )
-			in++; 
+			in++;
 		*in = '\0';
 		if ( !c ) {
 			// don't count last null value
@@ -225,13 +225,13 @@ int Com_Split( char *in, char **out, int outsz, int delim )
 		// skip leading spaces
 		if ( delim >= ' ' ) {
 			while( (c = *in) != '\0' && c <= ' ' )
-				in++; 
+				in++;
 		}
 		*out = in; out++;
 	}
 	// sanitize last value
 	while( (c = *in) != '\0' && c != delim )
-		in++; 
+		in++;
 	*in = '\0';
 	c = out - o;
 	// set remaining out pointers
@@ -377,7 +377,7 @@ qint64 Long64NoSwap( qint64 ll )
 	return ll;
 }
 
-float FloatSwap( const float *f ) 
+float FloatSwap( const float *f )
 {
 	floatint_t out;
 
@@ -402,7 +402,7 @@ void Swap_Init (void)
 {
 	byte	swaptest[2] = {1,0};
 
-// set the byte swapping variables in a portable manner	
+// set the byte swapping variables in a portable manner
 	if ( *(short *)swaptest == 1)
 	{
 		_BigShort = ShortSwap;
@@ -541,9 +541,9 @@ int COM_Compress( char *data_p ) {
 			}
 		// skip /* */ comments
 		} else if ( c == '/' && in[1] == '*' ) {
-			while ( *in && ( *in != '*' || in[1] != '/' ) ) 
+			while ( *in && ( *in != '*' || in[1] != '/' ) )
 				in++;
-			if ( *in ) 
+			if ( *in )
 				in += 2;
 			// record when we hit a newline
 		} else if ( c == '\n' || c == '\r' ) {
@@ -708,7 +708,7 @@ const char *COM_ParseExt( const char **data_p, qboolean allowLineBreaks )
 	*data_p = data;
 	return com_token;
 }
-	
+
 
 /*
 ==============
@@ -733,7 +733,7 @@ char *COM_ParseComplex( const char **data_p, qboolean allowLineBreaks )
 		0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,0, // excl. '\\' '_'
 	//  ` a b c d e f g h i j k l m n o
 		1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	//  p q r s t u v w x y z { | } ~ 
+	//  p q r s t u v w x y z { | } ~
 		0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1
 	};
 
@@ -741,10 +741,10 @@ char *COM_ParseComplex( const char **data_p, qboolean allowLineBreaks )
 	const byte *str;
 
 	str = (byte*)*data_p;
-	len = 0; 
+	len = 0;
 	shift = 0; // token line shift relative to com_lines
 	com_tokentype = TK_GENEGIC;
-	
+
 __reswitch:
 	switch ( *str )
 	{
@@ -806,7 +806,7 @@ __reswitch:
 		// single slash
 		com_token[ len++ ] = *str++;
 		break;
-	
+
 	// quoted string?
 	case '"':
 		str++; // skip leading '"'
@@ -1239,7 +1239,7 @@ qboolean Q_isintegral( float f )
 /*
 =============
 Q_vsnprintf
- 
+
 Special wrapper function for Microsoft's broken _vsnprintf() function. mingw-w64
 however, uses Microsoft's broken _vsnprintf() function.
 =============
@@ -1247,7 +1247,7 @@ however, uses Microsoft's broken _vsnprintf() function.
 int Q_vsnprintf( char *str, size_t size, const char *format, va_list ap )
 {
 	int retval;
-	
+
 	retval = _vsnprintf( str, size, format, ap );
 
 	if ( retval < 0 || (size_t)retval == size )
@@ -1258,11 +1258,11 @@ int Q_vsnprintf( char *str, size_t size, const char *format, va_list ap )
 		//
 		// Obviously we cannot determine that value from Microsoft's
 		// implementation, so we have no choice but to return size.
-		
+
 		str[size - 1] = '\0';
 		return size;
 	}
-	
+
 	return retval;
 }
 #endif
@@ -1271,18 +1271,18 @@ int Q_vsnprintf( char *str, size_t size, const char *format, va_list ap )
 /*
 =============
 Q_strncpyz
- 
+
 Safe strncpy that ensures a trailing zero
 =============
 */
-void Q_strncpyz( char *dest, const char *src, int destsize ) 
+void Q_strncpyz( char *dest, const char *src, int destsize )
 {
-	if ( !dest ) 
+	if ( !dest )
 	{
 		Com_Error( ERR_FATAL, "Q_strncpyz: NULL dest" );
 	}
 
-	if ( !src ) 
+	if ( !src )
 	{
 		Com_Error( ERR_FATAL, "Q_strncpyz: NULL src" );
 	}
@@ -1291,7 +1291,7 @@ void Q_strncpyz( char *dest, const char *src, int destsize )
 	{
 		Com_Error(ERR_FATAL,"Q_strncpyz: destsize < 1" );
 	}
-#if 1 
+#if 1
 	// do not fill whole remaining buffer with zeros
 	// this is obvious behavior change but actually it may affect only buggy QVMs
 	// which passes overlapping or short buffers to cvar reading routines
@@ -1378,7 +1378,7 @@ int Q_stricmpn( const char *s1, const char *s2, int n ) {
           return 1;
 
 
-	
+
 	do {
 		c1 = *s1++;
 		c2 = *s2++;
@@ -1386,7 +1386,7 @@ int Q_stricmpn( const char *s1, const char *s2, int n ) {
 		if (!n--) {
 			return 0;		// strings are equal until end point
 		}
-		
+
 		if (c1 != c2) {
 			if (c1 >= 'a' && c1 <= 'z') {
 				c1 -= ('a' - 'A');
@@ -1399,14 +1399,14 @@ int Q_stricmpn( const char *s1, const char *s2, int n ) {
 			}
 		}
 	} while (c1);
-	
+
 	return 0;		// strings are equal
 }
 
 
 int Q_strncmp( const char *s1, const char *s2, int n ) {
 	int		c1, c2;
-	
+
 	do {
 		c1 = *s1++;
 		c2 = *s2++;
@@ -1414,12 +1414,12 @@ int Q_strncmp( const char *s1, const char *s2, int n ) {
 		if (!n--) {
 			return 0;		// strings are equal until end point
 		}
-		
+
 		if (c1 != c2) {
 			return c1 < c2 ? -1 : 1;
 		}
 	} while (c1);
-	
+
 	return 0;		// strings are equal
 }
 
@@ -1439,11 +1439,11 @@ qboolean Q_streq( const char *s1, const char *s2 ) {
 }
 
 
-int Q_stricmp( const char *s1, const char *s2 ) 
+int Q_stricmp( const char *s1, const char *s2 )
 {
 	unsigned char c1, c2;
 
-	if ( s1 == NULL ) 
+	if ( s1 == NULL )
 	{
 		if ( s2 == NULL )
 			return 0;
@@ -1452,13 +1452,13 @@ int Q_stricmp( const char *s1, const char *s2 )
 	}
 	else if ( s2 == NULL )
 		return 1;
-	
-	do 
+
+	do
 	{
 		c1 = *s1++;
 		c2 = *s2++;
 
-		if ( c1 != c2 ) 
+		if ( c1 != c2 )
 		{
 
 			if ( c1 <= 'Z' && c1 >= 'A' )
@@ -1467,7 +1467,7 @@ int Q_stricmp( const char *s1, const char *s2 )
 			if ( c2 <= 'Z' && c2 >= 'A' )
 				c2 += ('a' - 'A');
 
-			if ( c1 != c2 ) 
+			if ( c1 != c2 )
 				return c1 < c2 ? -1 : 1;
 		}
 	}
@@ -1557,7 +1557,7 @@ const char *Q_stristr( const char *s, const char *find)
 }
 
 
-int Q_replace( const char *str1, const char *str2, char *src, int max_len ) 
+int Q_replace( const char *str1, const char *str2, char *src, int max_len )
 {
 	int len1, len2, d, count;
 	const char *s0, *s1, *s2, *max;
@@ -1574,12 +1574,12 @@ int Q_replace( const char *str1, const char *str2, char *src, int max_len )
     len2 = strlen( str2 );
     d = len2 - len1;
 
-    if ( d > 0 ) // expand and replace mode    
+    if ( d > 0 ) // expand and replace mode
     {
         max = src + max_len;
         src += strlen( src );
 
-        do  
+        do
         {
             // expand source string
 			s1 = src;
@@ -1587,12 +1587,12 @@ int Q_replace( const char *str1, const char *str2, char *src, int max_len )
             if ( src >= max )
                 return count;
             dst = src;
-            
+
             s0 = match + len1;
 
             while ( s1 >= s0 )
                 *dst-- = *s1--;
-			
+
 			// replace match
             s2 = str2;
 			while ( *s2 ) {
@@ -1605,17 +1605,17 @@ int Q_replace( const char *str1, const char *str2, char *src, int max_len )
         while ( match );
 
         return count;
-    } 
+    }
     else
     if ( d < 0 ) // shrink and replace mode
     {
-        do 
+        do
         {
             // shrink source string
             s1 = match + len1;
             dst = match + len2;
             while ( (*dst++ = *s1++) != '\0' );
-			
+
 			//replace match
             s2 = str2;
 			while ( *s2 ) {
@@ -1625,7 +1625,7 @@ int Q_replace( const char *str1, const char *str2, char *src, int max_len )
             match = strstr( match, str1 );
 
             count++;
-        } 
+        }
         while ( match );
 
         return count;
@@ -1640,7 +1640,7 @@ int Q_replace( const char *str1, const char *str2, char *src, int max_len )
 
         match = strstr( match, str1 );
         count++;
-	} 
+	}
     while ( match );
 
 	return count;
@@ -1680,7 +1680,7 @@ char *Q_CleanStr( char *string ) {
 	while ((c = *s) != 0 ) {
 		if ( Q_IsColorString( s ) ) {
 			s++;
-		}		
+		}
 		else if ( c >= 0x20 && c <= 0x7E ) {
 			*d++ = c;
 		}
@@ -1695,13 +1695,13 @@ char *Q_CleanStr( char *string ) {
 int Q_CountChar(const char *string, char tocount)
 {
 	int count;
-	
+
 	for(count = 0; *string; string++)
 	{
 		if(*string == tocount)
 			count++;
 	}
-	
+
 	return count;
 }
 
@@ -1716,7 +1716,7 @@ int QDECL Com_sprintf( char *dest, int size, const char *fmt, ...)
 	va_list	argptr;
 	char	bigbuffer[32000];	// big, but small enough to fit in PPC stack
 
-	if ( !dest ) 
+	if ( !dest )
 	{
 		Com_Error( ERR_FATAL, "Com_sprintf: NULL dest" );
 #if	defined(_DEBUG) && defined(_WIN32)
@@ -1729,7 +1729,7 @@ int QDECL Com_sprintf( char *dest, int size, const char *fmt, ...)
 	len = vsprintf( bigbuffer, fmt, argptr );
 	va_end( argptr );
 
-	if ( len >= sizeof( bigbuffer ) || len < 0 ) 
+	if ( len >= sizeof( bigbuffer ) || len < 0 )
 	{
 		Com_Error( ERR_FATAL, "Com_sprintf: overflowed bigbuffer" );
 #if	defined(_DEBUG) && defined(_WIN32)
@@ -1738,7 +1738,7 @@ int QDECL Com_sprintf( char *dest, int size, const char *fmt, ...)
 		return 0;
 	}
 
-	if ( len >= size ) 
+	if ( len >= size )
 	{
 		Com_Printf( S_COLOR_YELLOW "Com_sprintf: overflow of %i in %i\n", len, size );
 #if	defined(_DEBUG) && defined(_WIN32)
@@ -1845,7 +1845,7 @@ const char *Info_ValueForKey( const char *s, const char *key )
 	const char *v, *pkey;
 	char	*o, *o2;
 	int		klen, len;
-	
+
 	if ( !s || !key || !*key )
 		return "";
 
@@ -1877,7 +1877,7 @@ const char *Info_ValueForKey( const char *s, const char *key )
 			{
 				Com_Error( ERR_DROP, "Info_ValueForKey: oversize infostring" );
 			}
-			else 
+			else
 			{
 				while ( v < s )
 					*o++ = *v++;
@@ -1961,7 +1961,7 @@ const char *Info_ValueForKeyToken( const char *key )
 {
 	int i;
 
-	for ( i = 0; i < info_tokens; i++ ) 
+	for ( i = 0; i < info_tokens; i++ )
 	{
 		if ( Q_stricmp( info_keys[ i ], key ) == 0 )
 		{

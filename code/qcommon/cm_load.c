@@ -824,7 +824,7 @@ cmodel_t *CM_ClipHandleToModel( clipHandle_t handle ) {
 		return &box_model;
 	}
 	if ( handle < MAX_SUBMODELS ) {
-		Com_Error( ERR_DROP, "CM_ClipHandleToModel: bad handle %i < %i < %i", 
+		Com_Error( ERR_DROP, "CM_ClipHandleToModel: bad handle %i < %i < %i",
 			cm.numSubModels, handle, MAX_SUBMODELS );
 	}
 	Com_Error( ERR_DROP, "CM_ClipHandleToModel: bad handle %i", handle + MAX_SUBMODELS );

@@ -868,7 +868,7 @@ static char *Sys_StripAppBundle( char *dir )
 
 	Q_strncpyz( cwd, dir, sizeof( cwd ) );
 	if ( strcmp( basename( cwd ), "MacOS" ) != 0 )
-	{ 
+	{
 		return dir;
 	}
 
@@ -878,7 +878,7 @@ static char *Sys_StripAppBundle( char *dir )
 		return dir;
 	}
 
-	Q_strncpyz( cwd, dirname( cwd ), sizeof( cwd ) ); 
+	Q_strncpyz( cwd, dirname( cwd ), sizeof( cwd ) );
 	if ( strstr( basename( cwd ), ".app") == NULL )
 	{
 		return dir;

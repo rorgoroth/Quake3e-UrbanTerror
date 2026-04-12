@@ -89,7 +89,7 @@ static void SV_GameSendServerCommand( int clientNum, const char *text ) {
 		if ( clientNum < 0 || clientNum >= sv_maxclients->integer ) {
 			return;
 		}
-		SV_SendServerCommand( svs.clients + clientNum, "%s", text );	
+		SV_SendServerCommand( svs.clients + clientNum, "%s", text );
 	}
 }
 
@@ -105,7 +105,7 @@ static void SV_GameDropClient( int clientNum, const char *reason ) {
 	if ( clientNum < 0 || clientNum >= sv_maxclients->integer ) {
 		return;
 	}
-	SV_DropClient( svs.clients + clientNum, reason );	
+	SV_DropClient( svs.clients + clientNum, reason );
 }
 
 #ifdef USE_AUTH
@@ -361,7 +361,7 @@ GVM_ArgPtr
 exported version
 ====================
 */
-void *GVM_ArgPtr( intptr_t intValue ) 
+void *GVM_ArgPtr( intptr_t intValue )
 {
 	return VM_ArgPtr( intValue );
 }
@@ -413,7 +413,7 @@ static intptr_t SV_GameSystemCalls( intptr_t *args ) {
 	case G_MILLISECONDS:
 		return Sys_Milliseconds();
 	case G_CVAR_REGISTER:
-		Cvar_Register( VMA(1), VMA(2), VMA(3), args[4], gvm->privateFlag ); 
+		Cvar_Register( VMA(1), VMA(2), VMA(3), args[4], gvm->privateFlag );
 		return 0;
 	case G_CVAR_UPDATE:
 		Cvar_Update( VMA(1), gvm->privateFlag );
@@ -1110,7 +1110,7 @@ static void SV_InitGameVM( qboolean restart ) {
 	for ( i = 0 ; i < sv_maxclients->integer ; i++ ) {
 		svs.clients[i].gentity = NULL;
 	}
-	
+
 	// use the current msec count for a random seed
 	// init for this gamestate
 	VM_Call( gvm, 3, GAME_INIT, sv.time, Com_Milliseconds(), restart );

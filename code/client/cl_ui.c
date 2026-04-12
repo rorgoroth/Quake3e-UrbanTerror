@@ -1188,7 +1188,7 @@ static intptr_t CL_UISystemCalls( intptr_t *args ) {
 	case UI_TRAP_GETVALUE:
 		VM_CHECKBOUNDS( uivm, args[1], args[2] );
 		return UI_GetValue( VMA(1), args[2], VMA(3) );
-		
+
 #ifdef USE_AUTH
 	case UI_NET_STRINGTOADR:
 		return NET_StringToAdr( VMA(1), VMA(2), NA_IP);

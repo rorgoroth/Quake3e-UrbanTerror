@@ -194,7 +194,7 @@ libvar_t *LibVar( const char *var_name, const char *value )
 {
 	libvar_t *v;
 	v = LibVarGet( var_name );
-	if ( v ) 
+	if ( v )
 		return v;
 	//create new variable
 	v = LibVarAlloc( var_name );

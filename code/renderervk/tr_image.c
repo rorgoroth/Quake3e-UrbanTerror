@@ -284,11 +284,11 @@ Used to resample images in a more general than quartering fashion.
 This will only be filtered properly if the resampled size
 is greater than half the original size.
 
-If a larger shrinking is needed, use the mipmap function 
+If a larger shrinking is needed, use the mipmap function
 before or after.
 ================
 */
-static void ResampleTexture( unsigned *in, int inwidth, int inheight, unsigned *out,  
+static void ResampleTexture( unsigned *in, int inwidth, int inheight, unsigned *out,
 							int outwidth, int outheight ) {
 	int		i, j;
 	unsigned	*inrow, *inrow2;
@@ -299,7 +299,7 @@ static void ResampleTexture( unsigned *in, int inwidth, int inheight, unsigned *
 
 	if ( outwidth > ARRAY_LEN( p1 ) )
 		ri.Error( ERR_DROP, "ResampleTexture: max width" );
-								
+
 	fracstep = inwidth * 0x10000 / outwidth;
 
 	frac = fracstep>>2;
@@ -431,7 +431,7 @@ static void R_MipMap2( unsigned * const out, unsigned * const in, int inWidth, i
 		for ( j = 0 ; j < outWidth ; j++ ) {
 			outpix = (byte *) ( temp + i * outWidth + j );
 			for ( k = 0 ; k < 4 ; k++ ) {
-				total = 
+				total =
 					1 * ((byte *)&in[ ((i*2-1)&inHeightMask)*inWidth + ((j*2-1)&inWidthMask) ])[k] +
 					2 * ((byte *)&in[ ((i*2-1)&inHeightMask)*inWidth + ((j*2)&inWidthMask) ])[k] +
 					2 * ((byte *)&in[ ((i*2-1)&inHeightMask)*inWidth + ((j*2+1)&inWidthMask) ])[k] +
@@ -585,7 +585,7 @@ typedef struct {
 } Image_Upload_Data;
 
 static void generate_image_upload_data( image_t *image, byte *data, Image_Upload_Data *upload_data ) {
-	
+
 	qboolean mipmap = (image->flags & IMGFLAG_MIPMAP) ? qtrue : qfalse;
 	qboolean picmip = (image->flags & IMGFLAG_PICMIP) ? qtrue : qfalse;
 	byte* resampled_buffer = NULL;
@@ -702,7 +702,7 @@ static void generate_image_upload_data( image_t *image, byte *data, Image_Upload
 		if (width < 1) width = 1;
 
 		height >>= 1;
-		if (height < 1) height = 1; 
+		if (height < 1) height = 1;
 	}
 
 	// At this point width == scaled_width and height == scaled_height.
@@ -719,7 +719,7 @@ static void generate_image_upload_data( image_t *image, byte *data, Image_Upload
 
 	Com_Memcpy(upload_data->buffer, scaled_buffer, mip_level_size);
 	upload_data->buffer_size = mip_level_size;
-	
+
 	if ( mipmap ) {
 		while (scaled_width > 1 && scaled_height > 1) {
 			R_MipMap((byte *)scaled_buffer, (byte *)scaled_buffer, scaled_width, scaled_height);
@@ -1044,7 +1044,7 @@ image_t *R_CreateImage( const char *name, const char *name2, byte *pic, int widt
 		image->imgName2 = image->imgName + namelen;
 		strcpy( image->imgName2, name2 );
 	} else {
-		image->imgName2 = image->imgName; 
+		image->imgName2 = image->imgName;
 	}
 
 	hash = generateHashValue( name );
@@ -1355,8 +1355,8 @@ static void R_CreateDlightImage( void ) {
 			} else if ( b < 75 ) {
 				b = 0;
 			}
-			data[y][x][0] = 
-			data[y][x][1] = 
+			data[y][x][0] =
+			data[y][x][1] =
 			data[y][x][2] = b;
 			data[y][x][3] = 255;
 		}
@@ -1440,8 +1440,8 @@ static void R_CreateFogImage( void ) {
 		for (y=0 ; y<FOG_T ; y++) {
 			d = R_FogFactor( ( x + 0.5f ) / FOG_S, ( y + 0.5f ) / FOG_T );
 
-			data[(y*FOG_S+x)*4+0] = 
-			data[(y*FOG_S+x)*4+1] = 
+			data[(y*FOG_S+x)*4+0] =
+			data[(y*FOG_S+x)*4+1] =
 			data[(y*FOG_S+x)*4+2] = 255;
 			data[(y*FOG_S+x)*4+3] = 255*d;
 		}
@@ -1601,8 +1601,8 @@ static void R_CreateBuiltinImages( void ) {
 	// for default lightmaps, etc
 	for (x=0 ; x<DEFAULT_SIZE ; x++) {
 		for (y=0 ; y<DEFAULT_SIZE ; y++) {
-			data[y][x][0] = 
-			data[y][x][1] = 
+			data[y][x][0] =
+			data[y][x][1] =
 			data[y][x][2] = tr.identityLightByte;
 			data[y][x][3] = 255;
 		}
@@ -1854,14 +1854,14 @@ static char *CommaParse( const char **data_p ) {
 			}
 		}
 		// skip /* */ comments
-		else if ( c == '/' && data[1] == '*' ) 
+		else if ( c == '/' && data[1] == '*' )
 		{
 			data += 2;
-			while ( *data && ( *data != '*' || data[1] != '/' ) ) 
+			while ( *data && ( *data != '*' || data[1] != '/' ) )
 			{
 				data++;
 			}
-			if ( *data ) 
+			if ( *data )
 			{
 				data += 2;
 			}
@@ -2087,7 +2087,7 @@ void	R_SkinList_f( void ) {
 
 		ri.Printf( PRINT_ALL, "%3i:%s (%d surfaces)\n", i, skin->name, skin->numSurfaces );
 		for ( j = 0 ; j < skin->numSurfaces ; j++ ) {
-			ri.Printf( PRINT_ALL, "       %s = %s\n", 
+			ri.Printf( PRINT_ALL, "       %s = %s\n",
 				skin->surfaces[j].name, skin->surfaces[j].shader->name );
 		}
 	}

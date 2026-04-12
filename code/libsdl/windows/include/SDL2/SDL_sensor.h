@@ -89,7 +89,7 @@ typedef enum
  * -X ... +X : left ... right
  * -Y ... +Y : bottom ... top
  * -Z ... +Z : farther ... closer
- * 
+ *
  * The axis data is not changed when the phone is rotated.
  *
  * \sa SDL_GetDisplayOrientation()
@@ -113,7 +113,7 @@ typedef enum
  * -X ... +X : left ... right
  * -Y ... +Y : bottom ... top
  * -Z ... +Z : farther ... closer
- * 
+ *
  * The axis data is not changed when the phone is rotated.
  *
  * \sa SDL_GetDisplayOrientation()
@@ -130,7 +130,7 @@ extern DECLSPEC int SDLCALL SDL_NumSensors(void);
  *  \brief Get the implementation dependent name of a sensor.
  *
  *  This can be called before any sensors are opened.
- * 
+ *
  *  \return The sensor name, or NULL if device_index is out of range.
  */
 extern DECLSPEC const char *SDLCALL SDL_SensorGetDeviceName(int device_index);

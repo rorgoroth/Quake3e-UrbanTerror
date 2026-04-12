@@ -42,7 +42,7 @@ extern "C" {
 
 /* Platform specific functions for Windows */
 #ifdef __WIN32__
-	
+
 /**
    \brief Set a function that is called for every windows message, before TranslateMessage()
 */
@@ -85,9 +85,9 @@ extern DECLSPEC SDL_bool SDLCALL SDL_DXGIGetOutputInfo( int displayIndex, int *a
    \return 0 on success, or -1 on error.
  */
 extern DECLSPEC int SDLCALL SDL_LinuxSetThreadPriority(Sint64 threadID, int priority);
- 
+
 #endif /* __LINUX__ */
-	
+
 /* Platform specific functions for iOS */
 #if defined(__IPHONEOS__) && __IPHONEOS__
 

@@ -221,7 +221,7 @@ static void MD5Update(struct MD5Context *ctx, unsigned char const *buf,
 
 
 /*
- * Final wrapup - pad to 64-byte boundary with the bit pattern 
+ * Final wrapup - pad to 64-byte boundary with the bit pattern
  * 1 0* (64-bit count of bits processed, MSB-first)
  */
 static void MD5Final(struct MD5Context *ctx, unsigned char *digest)
@@ -391,13 +391,13 @@ int Com_MD5Addr( const netadr_t *addr, int timestamp )
 	// inner_hash = MD5( key1 | address | port | timestamp )
 	switch ( addr->type ) {
 		case NA_BROADCAST:
-		case NA_IP: 
-			MD5Update( &ctx_in, addr->ipv._4, 4 ); 
+		case NA_IP:
+			MD5Update( &ctx_in, addr->ipv._4, 4 );
 				break;
 #ifdef USE_IPV6
 		case NA_IP6:
 		case NA_MULTICAST6:
-			MD5Update( &ctx_in, addr->ipv._6, 16 ); 
+			MD5Update( &ctx_in, addr->ipv._6, 16 );
 			break;
 #endif
 		default:

@@ -379,7 +379,7 @@ int BotNextConsoleMessage(int chatstate, bot_consolemessage_t *cm)
 		cm->type = firstmsg->type;
 		Q_strncpyz(cm->message, firstmsg->message,
 			   sizeof(cm->message));
-		
+
 		/* We omit setting the two pointers in cm because pointer
 		 * size in the VM differs between the size in the engine on
 		 * 64 bit machines, which would lead to a buffer overflow if
@@ -387,7 +387,7 @@ int BotNextConsoleMessage(int chatstate, bot_consolemessage_t *cm)
 		 * of no interest to functions calling
 		 * BotNextConsoleMessage anyways.
 		 */
-		
+
 		return cm->handle;
 	} //end if
 	return 0;
@@ -2306,10 +2306,10 @@ int BotLoadChatFile(int chatstate, const char *chatfile, const char *chatname)
 				}
 				continue;
 			}
-			if( strcmp( chatfile, ichatdata[n]->filename ) != 0 ) { 
+			if( strcmp( chatfile, ichatdata[n]->filename ) != 0 ) {
 				continue;
 			}
-			if( strcmp( chatname, ichatdata[n]->chatname ) != 0 ) { 
+			if( strcmp( chatname, ichatdata[n]->chatname ) != 0 ) {
 				continue;
 			}
 			cs->chat = ichatdata[n]->chat;
@@ -2357,7 +2357,7 @@ static int BotExpandChatMessage(char *outmessage, int size, const char *message,
 	msgptr = message;
 	outputbuf = outmessage;
 	len = 0;
-	
+
 	while( *msgptr != '\0' )
 	{
 		if ( *msgptr == ESCAPE_CHAR )
@@ -2397,7 +2397,7 @@ static int BotExpandChatMessage(char *outmessage, int size, const char *message,
 							//replace the reply synonyms in the variables
 							BotReplaceReplySynonyms( temp, sizeof( temp ), vcontext );
 						}
-						else 
+						else
 						{
 							//replace synonyms in the variable context
 							BotReplaceSynonyms( temp, sizeof( temp ), vcontext );

@@ -142,7 +142,7 @@ void IN_UpdateWindow( RECT *window_rect, qboolean updateClipRegion )
 {
 	RECT rect;
 
-	if ( !window_rect ) 
+	if ( !window_rect )
 		window_rect = &rect;
 
 	if ( GetClientRect( g_wv.hWnd, window_rect ) ) {
@@ -266,7 +266,7 @@ static void IN_DeactivateWin32Mouse( void )
 IN_Win32Mouse
 ================
 */
-static void IN_Win32Mouse( int *mx, int *my ) 
+static void IN_Win32Mouse( int *mx, int *my )
 {
 	POINT		current_pos;
 
@@ -363,7 +363,7 @@ static void IN_ActivateRawMouse( void )
 
 	num = 1;
 	cnt = GRRID( &Rid, &num, sizeof( Rid ) );
-	if ( cnt < 0 || !g_wv.hWnd ) 
+	if ( cnt < 0 || !g_wv.hWnd )
 	{
 		Com_Printf( S_COLOR_YELLOW "Error getting registered raw input devices\n" );
 		return; // error getting registered raw input devices
@@ -483,7 +483,7 @@ static DIOBJECTDATAFORMAT rgodf[] = {
 
 #define NUM_OBJECTS (sizeof(rgodf) / sizeof(rgodf[0]))
 
-// NOTE TTimo: would be easier using c_dfDIMouse or c_dfDIMouse2 
+// NOTE TTimo: would be easier using c_dfDIMouse or c_dfDIMouse2
 static DIDATAFORMAT	df = {
 	sizeof(DIDATAFORMAT),       // this structure
 	sizeof(DIOBJECTDATAFORMAT), // size of object data format
@@ -520,7 +520,7 @@ static qboolean IN_InitDIMouse( void ) {
 
 	if (!hInstDI) {
 		hInstDI = LoadLibrary( TEXT( "dinput.dll" ) );
-		
+
 		if (hInstDI == NULL) {
 			Com_DPrintf ("Couldn't load dinput.dll\n");
 			return qfalse;
@@ -700,7 +700,7 @@ static void IN_DIMouse( int *mx, int *my ) {
 			else
 				Sys_QueEvent( od.dwTimeStamp, SE_KEY, K_MOUSE2, qfalse, 0, NULL );
 			break;
-			
+
 		case DIMOFS_BUTTON2:
 			if (od.dwData & 0x80)
 				Sys_QueEvent( od.dwTimeStamp, SE_KEY, K_MOUSE3, qtrue, 0, NULL );
@@ -822,7 +822,7 @@ static void IN_StartupMouse( void )
 	}
 
 	if ( in_mouse->integer == -1 ) {
-		Com_DPrintf( "Skipping check for Raw/DirectInput\n" ); 
+		Com_DPrintf( "Skipping check for Raw/DirectInput\n" );
 	} else {
 
 		if ( !g_wv.hWnd ) {
@@ -856,7 +856,7 @@ void IN_Win32MouseEvent( int x, int y, int mstate )
 	int dx, dy;
 
 	if ( in_lagged->integer ) {
-		
+
 	} else {
 		dx = x - g_wv.mouse.x;
 		dy = y - g_wv.mouse.y;
@@ -938,7 +938,7 @@ void IN_RawMouseEvent( LPARAM lParam )
 
 #undef CHECK_RAW_BUTTON
 
-	if ( u.raw.data.mouse.usButtonFlags & RI_MOUSE_WHEEL ) 
+	if ( u.raw.data.mouse.usButtonFlags & RI_MOUSE_WHEEL )
 	{
 		short data = u.raw.data.mouse.usButtonData;
 		if ( data > 0 )
@@ -1038,7 +1038,7 @@ static void IN_GetHotkey( cvar_t *var, int *pHotKey ) {
 
 	memset( kset, 0, sizeof( kset ) );
 
-	for ( i = 0; i < 4; i++ ) 
+	for ( i = 0; i < 4; i++ )
 	{
 		code = Win32_GetKey( &s, buf, sizeof( buf ) );
 		if ( code == 0 ) // no more tokens
@@ -1071,7 +1071,7 @@ static void IN_GetHotkey( cvar_t *var, int *pHotKey ) {
 		};
     }
 
-	if ( i == 0 ) 
+	if ( i == 0 )
 	{
 		Win_RemoveHotkey();
 		return;
@@ -1186,11 +1186,11 @@ void IN_Init( void ) {
 		"  0 - disable mouse input\n" \
 		"  1 - di/raw mouse\n" \
 		" -1 - win32 mouse" );
-		
+
 	in_nograb = Cvar_Get( "in_nograb", "0", 0 );
 	Cvar_SetDescription( in_nograb, "Do not capture mouse in game, may be useful during online streaming." );
 	in_lagged = Cvar_Get( "in_lagged", "0", 0 );
-	Cvar_SetDescription( in_lagged, 
+	Cvar_SetDescription( in_lagged,
 		"Mouse movement processing order:\n" \
 		" 0 - before rendering\n" \
 		" 1 - before framerate limiter" );
@@ -1292,17 +1292,17 @@ JOYSTICK
 */
 
 #ifdef USE_JOYSTICK
-/* 
-=============== 
-IN_StartupJoystick 
-=============== 
-*/  
-void IN_StartupJoystick (void) { 
+/*
+===============
+IN_StartupJoystick
+===============
+*/
+void IN_StartupJoystick (void) {
 	int			numdevs;
 	MMRESULT	mmr;
 
 	// assume no joystick
-	joy.avail = qfalse; 
+	joy.avail = qfalse;
 
 	if (! in_joystick->integer ) {
 		Com_DPrintf ("Joystick is not active.\n");
@@ -1326,7 +1326,7 @@ void IN_StartupJoystick (void) {
 
 		if ((mmr = joyGetPosEx (joy.id, &joy.ji)) == JOYERR_NOERROR)
 			break;
-	} 
+	}
 
 	// abort startup if we didn't find a valid joystick
 	if (mmr != JOYERR_NOERROR)
@@ -1340,7 +1340,7 @@ void IN_StartupJoystick (void) {
 	Com_Memset (&joy.jc, 0, sizeof(joy.jc));
 	if ((mmr = joyGetDevCaps (joy.id, &joy.jc, sizeof(joy.jc))) != JOYERR_NOERROR)
 	{
-		Com_DPrintf ("joystick not found -- invalid joystick capabilities (%x)\n", mmr); 
+		Com_DPrintf ("joystick not found -- invalid joystick capabilities (%x)\n", mmr);
 		return;
 	}
 
@@ -1363,7 +1363,7 @@ void IN_StartupJoystick (void) {
 	joy.oldpovstate = 0;
 
 	// mark the joystick as available
-	joy.avail = qtrue; 
+	joy.avail = qtrue;
 }
 
 /*
@@ -1377,7 +1377,7 @@ float JoyToF( int value ) {
 	// move centerpoint to zero
 	value -= 32768;
 
-	// convert range from -32768..32767 to -1..1 
+	// convert range from -32768..32767 to -1..1
 	fValue = (float)value / 32768.0;
 
 	if ( fValue < -1 ) {
@@ -1421,7 +1421,7 @@ void IN_JoyMove( void ) {
 
 	// verify joystick is available and that the user wants to use it
 	if ( !joy.avail ) {
-		return; 
+		return;
 	}
 
 	// collect the joystick data, if possible
@@ -1439,7 +1439,7 @@ void IN_JoyMove( void ) {
 	}
 
 	if ( in_debugJoystick->integer ) {
-		Com_Printf( "%8x %5i %5.2f %5.2f %5.2f %5.2f %6i %6i\n", 
+		Com_Printf( "%8x %5i %5.2f %5.2f %5.2f %5.2f %6i %6i\n",
 			JoyToI( joy.ji.dwButtons ),
 			JoyToI( joy.ji.dwPOV ),
 			JoyToF( joy.ji.dwXpos ), JoyToF( joy.ji.dwYpos ),
@@ -1547,7 +1547,7 @@ static void MIDI_NoteOn( int note, int velocity )
 	Sys_QueEvent( g_wv.sysMsgTime, SE_KEY, qkey, qtrue, 0, NULL );
 }
 
-static void CALLBACK MidiInProc( HMIDIIN hMidiIn, UINT uMsg, DWORD dwInstance, 
+static void CALLBACK MidiInProc( HMIDIIN hMidiIn, UINT uMsg, DWORD dwInstance,
 								 DWORD dwParam1, DWORD dwParam2 )
 {
 	int message;
@@ -1629,7 +1629,7 @@ static void IN_StartupMIDI( void )
 	//
 	// open the MIDI IN port
 	//
-	if ( midiInOpen( &s_midiInfo.hMidiIn, 
+	if ( midiInOpen( &s_midiInfo.hMidiIn,
 		             in_mididevice->integer,
 					 ( unsigned long ) MidiInProc,
 					 ( unsigned long ) NULL,

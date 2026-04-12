@@ -1,6 +1,6 @@
 #version 450
 
-// 3-tap gaussian blur 
+// 3-tap gaussian blur
 // exploiting linear filtering with -1.2 0 +1.2 texture offsets and 5 6 5 weighting
 // to emulate 5-tap blur
 

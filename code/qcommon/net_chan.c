@@ -86,7 +86,7 @@ called to open a channel to a remote system
 void Netchan_Setup( netsrc_t sock, netchan_t *chan, const netadr_t *adr, int port, int challenge, qboolean compat )
 {
 	Com_Memset (chan, 0, sizeof(*chan));
-	
+
 	chan->sock = sock;
 	chan->remoteAddress = *adr;
 	chan->qport = port;
@@ -350,7 +350,7 @@ qboolean Netchan_Process( netchan_t *chan, msg_t *msg ) {
 	// XOR unscramble all data in the packet after the header
 //	Netchan_UnScramblePacket( msg );
 
-	// get sequence numbers		
+	// get sequence numbers
 	MSG_BeginReadingOOB( msg );
 	sequence = MSG_ReadLong( msg );
 
@@ -424,11 +424,11 @@ qboolean Netchan_Process( netchan_t *chan, msg_t *msg ) {
 			, sequence );
 		}
 	}
-	
+
 
 	//
 	// if this is the final framgent of a reliable message,
-	// bump incoming_reliable_sequence 
+	// bump incoming_reliable_sequence
 	//
 	if ( fragmented ) {
 		// TTimo
@@ -462,7 +462,7 @@ qboolean Netchan_Process( netchan_t *chan, msg_t *msg ) {
 			return qfalse;
 		}
 
-		Com_Memcpy( chan->fragmentBuffer + chan->fragmentLength, 
+		Com_Memcpy( chan->fragmentBuffer + chan->fragmentLength,
 			msg->data + msg->readcount, fragmentLength );
 
 		chan->fragmentLength += fragmentLength;
@@ -493,7 +493,7 @@ qboolean Netchan_Process( netchan_t *chan, msg_t *msg ) {
 		// TTimo
 		// clients were not acking fragmented messages
 		chan->incomingSequence = sequence;
-		
+
 		return qtrue;
 	}
 
@@ -599,7 +599,7 @@ void NET_QueuePacket( int index, netsrc_t sock, int length, const void *data, co
 	new->length = length;
 	new->to = *to;
 	new->sock = sock;
-	new->release = Sys_Milliseconds() + (int)((float)offset / com_timescale->value);	
+	new->release = Sys_Milliseconds() + (int)((float)offset / com_timescale->value);
 	new->next = NULL;
 
 	if (packetQueue[index] == NULL) {
@@ -751,7 +751,7 @@ int NET_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 	}
 
 	Q_strncpyz( base, s, sizeof( base ) );
-	
+
 	if(*base == '[' || Q_CountChar(base, ':') > 1)
 	{
 		// This is an ipv6 address, handle it specially.
@@ -764,7 +764,7 @@ int NET_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 			if(*search == ':')
 				port = search + 1;
 		}
-		
+
 		if(*base == '[')
 			search = base + 1;
 		else
@@ -774,12 +774,12 @@ int NET_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 	{
 		// look for a port number
 		port = strchr( base, ':' );
-		
+
 		if ( port ) {
 			*port = '\0';
 			port++;
 		}
-		
+
 		search = base;
 	}
 

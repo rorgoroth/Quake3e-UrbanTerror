@@ -3015,7 +3015,7 @@ static void DetectNeeds( void )
 			if ( t == TCGEN_LIGHTMAP )
 			{
 				shader.needsST2 = qtrue;
-			} 
+			}
 			if ( t == TCGEN_ENVIRONMENT_MAPPED || t == TCGEN_ENVIRONMENT_MAPPED_FP )
 			{
 				shader.needsNormal = qtrue;

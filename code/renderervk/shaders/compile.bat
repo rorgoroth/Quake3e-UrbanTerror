@@ -37,7 +37,7 @@ for %%f in (*.frag) do (
 "%cl%" -S frag -V -o "%tmpf%" light_frag.tmpl
 "%bh%" "%tmpf%" %outf% frag_light
 
-"%cl%" -S frag -V -o "%tmpf%" light_frag.tmpl -DUSE_FOG 
+"%cl%" -S frag -V -o "%tmpf%" light_frag.tmpl -DUSE_FOG
 "%bh%" "%tmpf%" %outf% frag_light_fog
 
 "%cl%" -S frag -V -o "%tmpf%" light_frag.tmpl -DUSE_LINE

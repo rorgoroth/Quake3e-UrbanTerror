@@ -325,7 +325,7 @@ int AAS_VectorForBSPEpairKey(int ent, const char *key, vec3_t v)
 int AAS_FloatForBSPEpairKey(int ent, const char *key, float *value)
 {
 	char buf[MAX_EPAIRKEY];
-	
+
 	*value = 0;
 	if (!AAS_ValueForBSPEpairKey(ent, key, buf, sizeof( buf ))) return qfalse;
 	*value = atof(buf);
@@ -340,7 +340,7 @@ int AAS_FloatForBSPEpairKey(int ent, const char *key, float *value)
 int AAS_IntForBSPEpairKey(int ent, const char *key, int *value)
 {
 	char buf[MAX_EPAIRKEY];
-	
+
 	*value = 0;
 	if (!AAS_ValueForBSPEpairKey(ent, key, buf, sizeof( buf ))) return qfalse;
 	*value = atoi(buf);
