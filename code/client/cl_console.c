@@ -439,14 +439,14 @@ void Con_CheckResize( console_t *console )
 }
 
 
-void Con_PrevTab() {
+void Con_PrevTab(void) {
 	currentConsoleNum--;
 	if (currentConsoleNum < 0)
 		currentConsoleNum = numConsoles - 1;
 	currentCon = &consoles[currentConsoleNum];
 }
 
-void Con_NextTab() {
+void Con_NextTab(void) {
 	currentConsoleNum++;
 	if (currentConsoleNum == numConsoles)
 		currentConsoleNum = CONSOLE_ALL;

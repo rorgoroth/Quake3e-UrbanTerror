@@ -436,7 +436,7 @@ ifdef MINGW
 
   BASE_CFLAGS += -Wall -Wimplicit -Wstrict-prototypes -DUSE_ICON -DMINGW=1
 
-  BASE_CFLAGS += -Wno-unused-result -fvisibility=hidden
+  BASE_CFLAGS += -Wno-unused-result -Wno-self-assign -fvisibility=hidden
   BASE_CFLAGS += -ffunction-sections -flto
 
   ifeq ($(ARCH),x86_64)

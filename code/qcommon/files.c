@@ -199,17 +199,17 @@ or configs will never get loaded from disk!
 // every time a new demo pk3 file is built, this checksum must be updated.
 // the easiest way to get it is to just run the game and see what it spits out
 #define	DEMO_PAK0_CHECKSUM	2985612116u
-static const unsigned pak_checksums[] = {
-	1566731103u,
-	298122907u,
-	412165236u,
-	2991495316u,
-	1197932710u,
-	4087071573u,
-	3709064859u,
-	908855077u,
-	977125798u
-};
+//static const unsigned pak_checksums[] = {
+//	1566731103u,
+//	298122907u,
+//	412165236u,
+//	2991495316u,
+//	1197932710u,
+//	4087071573u,
+//	3709064859u,
+//	908855077u,
+//	977125798u
+//};
 
 // if this is defined, the executable positively won't work with any paks other
 // than the demo pak, even if productid is present.  This is only used for our
@@ -300,9 +300,11 @@ static	cvar_t		*fs_basepath;
 static	cvar_t		*fs_basegame;
 static	cvar_t		*fs_copyfiles;
 static	cvar_t		*fs_gamedirvar;
+
 #ifndef USE_HANDLE_CACHE
 static	cvar_t		*fs_locked;
 #endif
+
 static	cvar_t		*fs_excludeReference;
 
 static	searchpath_t	*fs_searchpaths;
@@ -369,7 +371,7 @@ void Com_AppendCDKey( const char *filename );
 void Com_ReadCDKey( const char *filename );
 
 static int FS_GetModList( char *listbuf, int bufsize );
-static void FS_CheckIdPaks( void );
+//static void FS_CheckIdPaks( void );
 void FS_Reload( void );
 
 
@@ -4797,20 +4799,20 @@ static void FS_Startup( void ) {
 }
 
 
-static void FS_PrintSearchPaths( void )
-{
-	const searchpath_t *path = fs_searchpaths;
-
-	Com_Printf( "\nSearch paths:\n" );
-
-	while ( path )
-	{
-		if ( path->dir && path->policy == DIR_STATIC )
-			Com_Printf( " * %s\n", path->dir->path );
-
-		path = path->next;
-	}
-}
+//static void FS_PrintSearchPaths( void )
+//{
+//	const searchpath_t *path = fs_searchpaths;
+//
+//	Com_Printf( "\nSearch paths:\n" );
+//
+//	while ( path )
+//	{
+//		if ( path->dir && path->policy == DIR_STATIC )
+//			Com_Printf( " * %s\n", path->dir->path );
+//
+//		path = path->next;
+//	}
+//}
 
 
 /*
