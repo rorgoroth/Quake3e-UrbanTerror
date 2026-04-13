@@ -398,7 +398,7 @@ ifdef MINGW
 
     # We need to figure out the correct gcc and windres
     ifeq ($(ARCH),x86_64)
-      MINGW_PREFIXES=x86_64-w64-mingw32 amd64-mingw32msvc
+      MINGW_PREFIXES=x86_64-w64-mingw32
       STRIP=x86_64-w64-mingw32-strip
     endif
     ifeq ($(ARCH),x86)
@@ -435,18 +435,16 @@ ifdef MINGW
   endif
 
   BASE_CFLAGS += -Wall -Wimplicit -Wstrict-prototypes -DUSE_ICON -DMINGW=1
-
-  BASE_CFLAGS += -Wno-unused-result -Wno-self-assign -fvisibility=hidden
-  BASE_CFLAGS += -ffunction-sections -flto
+  BASE_CFLAGS += -Wno-unused-result -Wno-self-assign
 
   ifeq ($(ARCH),x86_64)
     ARCHEXT = .x64
     BASE_CFLAGS += -m64 -Wno-incompatible-pointer-types
-    OPTIMIZE = -O2 -ffast-math
+    OPTIMIZE = -ffast-math
   endif
   ifeq ($(ARCH),x86)
     BASE_CFLAGS += -m32
-    OPTIMIZE = -O2 -march=i586 -mtune=i686 -ffast-math
+    OPTIMIZE = -ffast-math
   endif
 
   SHLIBEXT = dll
@@ -457,7 +455,6 @@ ifdef MINGW
 
   LDFLAGS += -mwindows -Wl,--dynamicbase -Wl,--nxcompat
   LDFLAGS += -lwsock32 -lgdi32 -lwinmm -lole32 -lws2_32 -lpsapi -lcomctl32
-  LDFLAGS += -Wl,--gc-sections -fvisibility=hidden -flto
 
   CLIENT_LDFLAGS=$(LDFLAGS)
 
