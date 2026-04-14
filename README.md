@@ -32,7 +32,6 @@ Go to [rorgoroth/mingw-cmake-env/releases](https://github.com/rorgoroth/mingw-cm
 * Optimized OpenGL renderer
 * Optimized Vulkan renderer
 * Raw mouse input support, enabled automatically instead of DirectInput (`\in_mouse 1`) if available
-* Unlagged mouse events processing, can be reverted by setting `in_lagged 1`
 * `\in_minimize` - hotkey for minimize/restore main window (win32-only, direct replacement for Q3Minimizer)
 * `\video-pipe` - to use external ffmpeg binary as an encoder for better quality and smaller output files
 * Significally reworked QVM (Quake Virtual Machine)
