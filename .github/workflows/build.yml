@@ -9,7 +9,7 @@ on:
       - 'docs/*'
   push:
     branches:
-      - master
+      - main
     paths-ignore:
       - '**.md'
       - '*.txt'
@@ -22,8 +22,8 @@ on:
 
 jobs:
   windows-msys:
-    name: ${{ matrix.btype }} Windows-GCC ${{ matrix.arch }}
-    runs-on: windows-2019
+    name: ${{ matrix.btype }} Windows-${{ matrix.cc }} ${{ matrix.arch }}
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
@@ -53,26 +53,80 @@ jobs:
 
     - uses: msys2/setup-msys2@v2
       with:
-        install: ${{ matrix.prefix }}-binutils ${{ matrix.prefix }}-make ${{ matrix.prefix }}-${{ matrix.cc }}
+        install: base-devel ${{ matrix.prefix }}-binutils ${{ matrix.prefix }}-make ${{ matrix.prefix }}-${{ matrix.cc }}
         msystem: ${{ matrix.msystem }}
         path-type: minimal
         release: false
         update: false
+        cache: false
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: recursive
 
     - name: Build
       if: ${{ github.event_name != 'release' || matrix.btype != 'Debug' }} # skip Debug configuration in Release build
       run: |
+        make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} COMPILE_ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=quake3e-vulkan BUILD_SERVER=0
         make clean ARCH=${{ matrix.arch }}
         make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=urbanterror-slim-vulkan BUILD_SERVER=0
         make clean ARCH=${{ matrix.arch }}
         make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
 
-    - uses: actions/upload-artifact@v4
-      if: matrix.cc == 'gcc' && matrix.btype == 'release'
+    - uses: actions/upload-artifact@v7
+      if: matrix.cc == 'gcc' && matrix.btype == 'Release'
+      with:
+        name: windows-${{ matrix.cc }}-${{ matrix.arch }}
+        path: bin
+        if-no-files-found: error
+        retention-days: 5
+
+  windows-msys32:
+    name: ${{ matrix.btype }} Windows-msys32 ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x86_64]
+#       btype: [Release, Debug]
+        btype: [Release]
+        include:
+          - btype: Release
+            rule: install
+
+#         - btype: Debug
+#           rule: debug
+
+    steps:
+    - name: Checkout current repo
+      uses: actions/checkout@v6
+
+    - name: Checkout msys32 tools from sibling repo
+      uses: actions/checkout@v6
+      with:
+        repository: ec-/msys32
+        path: msys
+
+    - name: Extract msys32.7z
+      run: |
+        7z x %GITHUB_WORKSPACE%/msys/msys32.7z -o%GITHUB_WORKSPACE%/msys
+      shell: cmd
+
+    - name: Prepend msys/bin to PATH
+      run: |
+           echo "PATH=$GITHUB_WORKSPACE/msys/mingw/bin;$GITHUB_WORKSPACE/msys/bin;$GITHUB_WORKSPACE/msys" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Build
+      if: ${{ github.event_name != 'release' || matrix.btype != 'Debug' }} # skip Debug configuration in Release build
+      shell: cmd
+      run: |
+        make ${{ matrix.rule }} ARCH=${{ matrix.arch }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=quake3e-vulkan BUILD_SERVER=0
+        make clean ARCH=${{ matrix.arch }}
+        make ${{ matrix.rule }} ARCH=${{ matrix.arch }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+
+    - uses: actions/upload-artifact@v7
+      if: matrix.btype == 'Release'
       with:
         name: windows-mingw-${{ matrix.arch }}
         path: bin
@@ -81,7 +135,7 @@ jobs:
 
   windows-msvc:
     name: ${{ matrix.btype }} Windows-MSVC ${{ matrix.arch }}
-    runs-on: windows-2019
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
@@ -104,9 +158,9 @@ jobs:
 
     steps:
 
-    - uses: microsoft/setup-msbuild@v2
+    - uses: microsoft/setup-msbuild@v3
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: recursive
 
@@ -131,14 +185,14 @@ jobs:
         msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=${{ matrix.btype }},Platform=${{ matrix.platform }} -t:Clean
         msbuild code\win32\msvc2017\quake3e.vcxproj -p:TargetName=urbanterror-slim,Configuration=${{ matrix.btype }},Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean
 
-    - uses: actions/upload-artifact@v4
-      if: ${{ matrix.btype == 'release' }}
+    - uses: actions/upload-artifact@v7
+      if: ${{ matrix.btype == 'Release' }}
       with:
         name: windows-msvc-${{ matrix.pkg_suffix }}
         path: bin
         if-no-files-found: error
         retention-days: 5
-        
+
   ubuntu-x86:
     name: ${{ matrix.btype }} Ubuntu ${{ matrix.arch }}
     runs-on: ubuntu-24.04
@@ -175,7 +229,7 @@ jobs:
           sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound-dev libsdl2-dev
         fi
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: recursive
 
@@ -183,11 +237,11 @@ jobs:
       if: ${{ github.event_name != 'release' || matrix.btype != 'Debug' }} # skip in Release builds
       run: |
         make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin ${{ matrix.use_sdl }} USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=urbanterror-slim-vulkan BUILD_SERVER=0
-        make clean ARCH=${{ matrix.arch }} 
-        make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin ${{ matrix.use_sdl }} USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+        make clean ARCH=${{ matrix.arch }}
+        make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} COMPILE_ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin ${{ matrix.use_sdl }} USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
 
-    - uses: actions/upload-artifact@v4
-      if: matrix.cc == 'gcc' && matrix.btype == 'release'
+    - uses: actions/upload-artifact@v7
+      if: matrix.cc == 'gcc' && matrix.btype == 'Release'
       with:
         name: linux-${{ matrix.arch }}
         path: bin
@@ -212,7 +266,7 @@ jobs:
 
     steps:
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       if: false
       with:
         submodules: recursive
@@ -220,7 +274,7 @@ jobs:
     - name: Build ${{ matrix.arch }}
       #if: ${{ github.event_name != 'release' || matrix.btype != 'Debug' }} # skip Debug configuration in Release build
       if: false
-      uses: uraimo/run-on-arch-action@v2
+      uses: uraimo/run-on-arch-action@v3
       with:
         arch: ${{ matrix.arch }}
         distro: ubuntu24.04
@@ -231,10 +285,10 @@ jobs:
           apt-get install -y make gcc g++
           apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound-dev
           make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=urbanterror-slim-vulkan BUILD_SERVER=0
-          make clean ARCH=${{ matrix.arch }} 
+          make clean ARCH=${{ matrix.arch }}
           make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: false
       #if: matrix.cc == 'gcc' && matrix.btype == 'Release'
       with:
@@ -243,9 +297,52 @@ jobs:
         if-no-files-found: error
         retention-days: 5
 
+  ubuntu-arm64:
+    name: ${{ matrix.btype }} Ubuntu ${{ matrix.arch }}
+    runs-on: ubuntu-22.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64]
+        cc: [gcc]
+        btype: [Release, Debug]
+        include:
+          - btype: Release
+            rule: install
+
+          - btype: Debug
+            rule: debug
+
+    steps:
+
+    - name: Install tools
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get install -y make gcc g++
+        sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound-dev libsdl2-dev
+
+    - uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    - name: Build
+      if: ${{ github.event_name != 'release' || matrix.btype != 'Debug' }} # skip Debug configuration in Release build
+      run: |
+          make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=quake3e-vulkan BUILD_SERVER=0
+          make clean ARCH=${{ matrix.arch }}
+          make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+
+    - uses: actions/upload-artifact@v7
+      if: matrix.cc == 'gcc' && matrix.btype == 'Release'
+      with:
+        name: linux-${{ matrix.arch }}
+        path: bin
+        if-no-files-found: error
+        retention-days: 5
+
   macos-x86:
     name: ${{ matrix.btype }} macOS ${{ matrix.arch }}
-    runs-on: macos-latest
+    runs-on: macos-14
     strategy:
       fail-fast: false
       matrix:
@@ -264,7 +361,7 @@ jobs:
     - name: Install tools
       run: brew install coreutils sdl2 # pkg-config
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: recursive
 
@@ -272,11 +369,11 @@ jobs:
       if: ${{ github.event_name != 'release' || matrix.btype != 'Debug' }} # skip Debug configuration in Release build
       run: |
         make ${{ matrix.rule }} -j$(sysctl -n hw.logicalcpu) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=urbanterror-slim-vulkan BUILD_SERVER=0 STRIP=echo
-        make clean ARCH=${{ matrix.arch }} 
+        make clean ARCH=${{ matrix.arch }}
         make ${{ matrix.rule }} -j$(sysctl -n hw.logicalcpu) ARCH=${{ matrix.arch }} CC=${{ matrix.cc }} DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl STRIP=echo
 
-    - uses: actions/upload-artifact@v4
-      if: matrix.cc == 'clang' && matrix.btype == 'release'
+    - uses: actions/upload-artifact@v7
+      if: matrix.cc == 'clang' && matrix.btype == 'Release'
       with:
         name: macos-${{ matrix.arch }}
         path: bin
@@ -284,12 +381,12 @@ jobs:
         retention-days: 5
 
   create-testing:
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    needs: [windows-msys, windows-msvc, ubuntu-x86, ubuntu-arm, macos-x86]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: [windows-msys32, windows-msvc, ubuntu-x86, ubuntu-arm64, macos-x86]
     runs-on: ubuntu-latest
     steps:
       - name: Download Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
 
       - name: Create binary archives
         run: |
@@ -317,7 +414,7 @@ jobs:
 
   update-release:
     if: ${{ github.event_name == 'release' }}
-    needs: [windows-msys, windows-msvc, ubuntu-x86, ubuntu-arm, macos-x86]
+    needs: [windows-msys32, windows-msvc, ubuntu-x86, ubuntu-arm, macos-x86]
     runs-on: ubuntu-latest
 
     strategy:
@@ -335,9 +432,12 @@ jobs:
           - artifact_dir: linux-x86_64
             artifact_name: urt-slim-linux-x86_64.zip
 
+          - artifact_dir: linux-arm64
+            artifact_name: quake3e-linux-arm64.zip
+
           - artifact_dir: windows-mingw-x86
 #           artifact_name: urt-slim-windows-mingw-x86.zip
-            artifact_name: urt-slim-windows-x86.zip 
+            artifact_name: urt-slim-windows-x86.zip
 
           - artifact_dir: windows-mingw-x86_64
 #           artifact_name: urt-slim-windows-mingw-x86_64.zip

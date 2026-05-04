@@ -39,6 +39,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 WinVars_t	g_wv;
 
+#ifndef DEDICATED
+
 /*
 ==================
 Sys_LowPhysicalMemory
@@ -71,6 +73,7 @@ void Sys_BeginProfiling( void ) {
 	// this is just used on the mac build
 }
 
+#endif // !DEDICATED
 
 /*
 =============
@@ -687,6 +690,7 @@ static const char *GetExceptionName( DWORD code )
 		case EXCEPTION_INVALID_DISPOSITION: return "INVALID_DISPOSITION";
 		case EXCEPTION_GUARD_PAGE: return "GUARD_PAGE";
 		case EXCEPTION_INVALID_HANDLE: return "INVALID_HANDLE";
+		case EXCEPTION_INT_DIVIDE_BY_ZERO: return "INTEGER_DIVIDE_BY_ZERO";
 		default: break;
 	}
 
