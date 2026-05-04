@@ -57,7 +57,7 @@ void S_WriteLinearBlastStereo16_SSE( void );
 
 #ifdef _WIN32
 
-void S_WriteLinearBlastStereo16_MMX( void ) 
+void S_WriteLinearBlastStereo16_MMX( void )
 {
 __asm {
 	push ebx
@@ -159,7 +159,7 @@ LExit:
 }
 
 
-void S_WriteLinearBlastStereo16_SSE( void ) 
+void S_WriteLinearBlastStereo16_SSE( void )
 {
 __asm {
 	push ebx
@@ -343,7 +343,7 @@ void S_TransferPaintBuffer( int endtime, byte *buffer, portable_samplepair_t inp
 	{	// general case
 		p = (int *) inputbuffer;
 		count = (endtime - s_paintedtime) * dma.channels;
-		out_mask = dma.samples - 1; 
+		out_mask = dma.samples - 1;
 		out_idx = ( s_paintedtime * dma.channels ) & out_mask;
 		step = 3 - dma.channels;
 
@@ -515,7 +515,7 @@ static void S_PaintChannelFrom16_scalar( channel_t *ch, const sfx_t *sc, int cou
 }
 
 
-static void S_PaintChannelFrom16( channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset ) 
+static void S_PaintChannelFrom16( channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset )
 {
 	S_PaintChannelFrom16_scalar( ch, sc, count, sampleOffset, bufferOffset );
 }

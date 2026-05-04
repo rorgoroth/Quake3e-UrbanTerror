@@ -460,7 +460,7 @@ static int GLSL_LoadGPUShaderText(const char *name, const char *fallback,
 	{
 		ri.FS_FreeFile(buffer);
 	}
-	
+
 	return result;
 }
 
@@ -642,7 +642,7 @@ static void GLSL_InitUniforms(shaderProgram_t *program)
 
 		if (uniforms[i] == -1)
 			continue;
-		 
+
 		program->uniformBufferOffsets[i] = size;
 
 		switch(uniformsInfo[i].type)
@@ -729,7 +729,7 @@ void GLSL_SetUniformFloat(shaderProgram_t *program, int uniformNum, GLfloat valu
 	}
 
 	*compare = value;
-	
+
 	qglProgramUniform1fEXT(program->program, uniforms[uniformNum], value);
 }
 
@@ -928,7 +928,7 @@ void GLSL_InitGPUShaders(void)
 	startTime = ri.Milliseconds();
 
 	for (i = 0; i < GENERICDEF_COUNT; i++)
-	{	
+	{
 		if ((i & GENERICDEF_USE_VERTEX_ANIMATION) && (i & GENERICDEF_USE_BONE_ANIMATION))
 			continue;
 
@@ -986,7 +986,7 @@ void GLSL_InitGPUShaders(void)
 	{
 		ri.Error(ERR_FATAL, "Could not load texturecolor shader!");
 	}
-	
+
 	GLSL_InitUniforms(&tr.textureColorShader);
 
 	GLSL_SetUniformInt(&tr.textureColorShader, UNIFORM_TEXTUREMAP, TB_DIFFUSEMAP);
@@ -1048,7 +1048,7 @@ void GLSL_InitGPUShaders(void)
 		}
 
 		GLSL_InitUniforms(&tr.dlightShader[i]);
-		
+
 		GLSL_SetUniformInt(&tr.dlightShader[i], UNIFORM_DIFFUSEMAP, TB_DIFFUSEMAP);
 
 		GLSL_FinishGPUShader(&tr.dlightShader[i]);
@@ -1259,7 +1259,7 @@ void GLSL_InitGPUShaders(void)
 	{
 		ri.Error(ERR_FATAL, "Could not load pshadow shader!");
 	}
-	
+
 	GLSL_InitUniforms(&tr.pshadowShader);
 
 	GLSL_SetUniformInt(&tr.pshadowShader, UNIFORM_SHADOWMAP, TB_DIFFUSEMAP);
@@ -1276,7 +1276,7 @@ void GLSL_InitGPUShaders(void)
 	{
 		ri.Error(ERR_FATAL, "Could not load down4x shader!");
 	}
-	
+
 	GLSL_InitUniforms(&tr.down4xShader);
 
 	GLSL_SetUniformInt(&tr.down4xShader, UNIFORM_TEXTUREMAP, TB_DIFFUSEMAP);
@@ -1340,7 +1340,7 @@ void GLSL_InitGPUShaders(void)
 
 		GLSL_FinishGPUShader(&tr.calclevels4xShader[i]);
 
-		numEtcShaders++;		
+		numEtcShaders++;
 	}
 
 
@@ -1364,7 +1364,7 @@ void GLSL_InitGPUShaders(void)
 	{
 		ri.Error(ERR_FATAL, "Could not load shadowmask shader!");
 	}
-	
+
 	GLSL_InitUniforms(&tr.shadowmaskShader);
 
 	GLSL_SetUniformInt(&tr.shadowmaskShader, UNIFORM_SCREENDEPTHMAP, TB_COLORMAP);
@@ -1413,7 +1413,7 @@ void GLSL_InitGPUShaders(void)
 		{
 			ri.Error(ERR_FATAL, "Could not load depthBlur shader!");
 		}
-		
+
 		GLSL_InitUniforms(&tr.depthBlurShader[i]);
 
 		GLSL_SetUniformInt(&tr.depthBlurShader[i], UNIFORM_SCREENIMAGEMAP, TB_COLORMAP);
@@ -1445,8 +1445,8 @@ void GLSL_InitGPUShaders(void)
 
 	endTime = ri.Milliseconds();
 
-	ri.Printf(PRINT_ALL, "loaded %i GLSL shaders (%i gen %i light %i etc) in %5.2f seconds\n", 
-		numGenShaders + numLightShaders + numEtcShaders, numGenShaders, numLightShaders, 
+	ri.Printf(PRINT_ALL, "loaded %i GLSL shaders (%i gen %i light %i etc) in %5.2f seconds\n",
+		numGenShaders + numLightShaders + numEtcShaders, numGenShaders, numLightShaders,
 		numEtcShaders, (endTime - startTime) / 1000.0);
 }
 

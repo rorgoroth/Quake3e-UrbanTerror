@@ -349,7 +349,7 @@ static void end_command_buffer( VkCommandBuffer command_buffer, const char *loca
 		submit_info.waitSemaphoreCount = 1;
 		submit_info.pWaitSemaphores = &waits;
 		submit_info.pWaitDstStageMask = &wait_dst_stage_mask;
-	} else 
+	} else
 #endif
 	{
 		submit_info.waitSemaphoreCount = 0;
@@ -370,7 +370,7 @@ static void end_command_buffer( VkCommandBuffer command_buffer, const char *loca
 }
 
 
-static void record_image_layout_transition( VkCommandBuffer command_buffer, VkImage image, VkImageAspectFlags image_aspect_flags, 
+static void record_image_layout_transition( VkCommandBuffer command_buffer, VkImage image, VkImageAspectFlags image_aspect_flags,
 	VkImageLayout old_layout, VkImageLayout new_layout, uint32_t src_stage_override, uint32_t dst_stage_override ) {
 	VkImageMemoryBarrier barrier;
 	uint32_t src_stage, dst_stage;
@@ -1085,7 +1085,7 @@ static void vk_clean_staging_buffer( void )
 		vk.staging_buffer.handle = VK_NULL_HANDLE;
 	}
 
-	//if ( vk.staging_buffer.ptr != NULL ) 
+	//if ( vk.staging_buffer.ptr != NULL )
 	//	qvkUnmapMemory( vk.device, vk.staging_buffer.memory ) {
 	//	vk.staging_buffer.ptr = NULL;
 	//}
@@ -4661,7 +4661,7 @@ __cleanup:
 
 	Com_Memset( &vk, 0, sizeof( vk ) );
 	Com_Memset( &vk_world, 0, sizeof( vk_world ) );
-	
+
 	if ( code != REF_KEEP_CONTEXT ) {
 		vk_destroy_instance();
 		deinit_instance_functions();

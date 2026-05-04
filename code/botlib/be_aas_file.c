@@ -646,7 +646,7 @@ static int AAS_WriteAASLump(fileHandle_t fp, aas_header_t *h, int lumpnum, void 
 	aas_lump_t *lump;
 
 	lump = &h->lumps[lumpnum];
-	
+
 	lump->fileofs = LittleLong(AAS_WriteAASLump_offset);	//LittleLong(ftell(fp));
 	lump->filelen = LittleLong(length);
 

@@ -1181,7 +1181,7 @@ float ReadSignedFloat(script_t *script)
 
 		sign = -1.0;
 	}
-	
+
 	if (token.type != TT_NUMBER)
 	{
 		ScriptError(script, "expected float value, found %s", token.string);
@@ -1218,7 +1218,7 @@ signed long int ReadSignedInt(script_t *script)
 		ScriptError(script, "expected integer value, found %s", token.string);
 		return 0;
 	}
-	
+
 	return sign * token.intvalue;
 } //end of the function ReadSignedInt
 #endif

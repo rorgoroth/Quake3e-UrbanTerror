@@ -2403,7 +2403,7 @@ Key complex shaders to validate/check:
 * textures/lun3dm5/c_crete6j -> stage #4
 [pom]
 * textures/sockter/ter_mossgravel -> stage #1
-[simpsons_q3] 
+[simpsons_q3]
 * textures/simpsons/generic_white -> stage #0 (lightmap)
 
 ====================
@@ -3030,7 +3030,7 @@ static void DetectNeeds( void )
 			if ( t == TCGEN_LIGHTMAP )
 			{
 				shader.needsST2 = qtrue;
-			} 
+			}
 			if ( t == TCGEN_ENVIRONMENT_MAPPED || t == TCGEN_ENVIRONMENT_MAPPED_FP )
 			{
 				shader.needsNormal = qtrue;

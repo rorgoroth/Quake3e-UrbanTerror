@@ -36,7 +36,7 @@ freely, subject to the following restrictions:
 		'static' loopSound_t	loopSounds[MAX_GENTITIES];
 
 	2. In "snd_local.h" add the following changes (channel_t structure changed + ch_side_t structure added):
-		typedef struct 
+		typedef struct
 		{
 			int			vol; // Must be first member due to union (see channel_t)
 			int 		offset;
@@ -85,7 +85,7 @@ freely, subject to the following restrictions:
 		#endif
 
 	7. Fix S_UpdateBackgroundTrack in "snd_dma.c"
-	Replace: 
+	Replace:
 		fileSamples = bufferSamples * s_backgroundStream->info.rate / dma.speed;
 	With:
 		fileSamples = (bufferSamples * dma.speed) / s_backgroundStream->info.rate;
@@ -216,7 +216,7 @@ dmaHD_FreeOldestSound
 ======================
 */
 
-void dmaHD_FreeOldestSound( void ) 
+void dmaHD_FreeOldestSound( void )
 {
 	int	i, oldest, used;
 	sfx_t *sfx;
@@ -225,10 +225,10 @@ void dmaHD_FreeOldestSound( void )
 	oldest = Com_Milliseconds();
 	used = 0;
 
-	for (i = 1 ; i < s_numSfx ; i++) 
+	for (i = 1 ; i < s_numSfx ; i++)
 	{
 		sfx = &s_knownSfx[i];
-		if (sfx->inMemory && sfx->lastTimeUsed < oldest) 
+		if (sfx->inMemory && sfx->lastTimeUsed < oldest)
 		{
 			used = i;
 			oldest = sfx->lastTimeUsed;
@@ -257,7 +257,7 @@ short* dmaHD_AllocateSoundBuffer(int samples)
 {
 	int bytes = samples * sizeof(short);
 	short* buffer;
-	
+
 	while (g_dmaHD_allocatedsoundmemory > 0 &&
 		(g_dmaHD_allocatedsoundmemory + bytes) > MAX_SOUNDBYTES) dmaHD_FreeOldestSound();
 
@@ -277,7 +277,7 @@ short* dmaHD_AllocateSoundBuffer(int samples)
 }
 
 // =======================================================
-// DMAHD - Interpolation functions / No need to optimize a lot here since the sounds are interpolated 
+// DMAHD - Interpolation functions / No need to optimize a lot here since the sounds are interpolated
 // once on load and not on playback. This also means that at least twice more memory is used.
 // =======================================================
 // x0-----x1--t--x2-----x3 / x0/2/3/4 are know samples / t = 0.0 - 1.0 between x1 and x2 / returns y value at point t
@@ -374,10 +374,10 @@ static int dmaHD_GetInterpolatedSampleLinear(float t, int samples, byte *data,
 
 	// Get points
 	x = (int)t;
-	
+
 	c0 = (float)dmaHD_GetSampleRaw(x, samples, data);
 	c1 = (float)dmaHD_GetSampleRaw(x+1, samples, data);
-	
+
 	val = (int)(((c1 - c0) * FLOAT_DECIMAL_PART(t)) + c0);
 	// No need to clamp for linear
 	return val;
@@ -393,14 +393,14 @@ static int dmaHD_GetNoInterpolationSample(float t, int samples, byte *data,
 
 	// Get points
 	x = (int)t;
-	
+
 	if (FLOAT_DECIMAL_PART(t) > 0.5) x++;
 
 	return dmaHD_GetSampleRaw(x, samples, data);
 }
 
-int (*dmaHD_GetInterpolatedSample)(float t, int samples, byte *data, 
-								   int (*dmaHD_GetSampleRaw)(int, int, byte*)) = 
+int (*dmaHD_GetInterpolatedSample)(float t, int samples, byte *data,
+								   int (*dmaHD_GetSampleRaw)(int, int, byte*)) =
 	dmaHD_GetInterpolatedSampleHermite4pt3oX;
 
 // =======================================================
@@ -456,7 +456,7 @@ void dmaHD_ResampleSfx( sfx_t *sfx, int channels, int inrate, int inwidth, byte 
 
 	// Now do actual high/low pass on actual data.
 	for (;idx_hp < outcount; idx_hp++)
-	{ 
+	{
 		sample = dmaHD_GetInterpolatedSample(idx_smp, sfx->soundLength, data, dmaHD_GetSampleRaw);
 		bsample = dmaHD_GetNoInterpolationSample(idx_smp, sfx->soundLength, data, dmaHD_GetSampleRaw);
 		idx_smp += stepscale;
@@ -472,7 +472,7 @@ void dmaHD_ResampleSfx( sfx_t *sfx, int channels, int inrate, int inwidth, byte 
 		buffer[idx_lp++] = SMPCLAMP(lp_data);
 		lp_last = lp_data;
 	}
-	
+
 	sfx->soundData = (sndBuffer*)buffer;
 	sfx->soundLength = outcount;
 }
@@ -522,7 +522,7 @@ qboolean dmaHD_LoadSound(sfx_t *sfx)
 	sfx->soundLength = info.samples;
 	sfx->soundData = NULL;
 	dmaHD_ResampleSfx(sfx, info.channels, info.rate, info.width, data + info.dataofs, qfalse);
-	
+
 	// Free data allocated by Codec
 	Hunk_FreeTempMemory(data);
 
@@ -535,7 +535,7 @@ PART#02: dmaHD: Mixing
 ===============================================================================
 */
 
-static void dmaHD_PaintChannelFrom16_HHRTF(channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset, int chan) 
+static void dmaHD_PaintChannelFrom16_HHRTF(channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset, int chan)
 {
 	int vol, i, so;
 	portable_samplepair_t *samp = &dmaHD_paintbuffer[bufferOffset];
@@ -576,7 +576,7 @@ static void dmaHD_PaintChannelFrom16_HHRTF(channel_t *ch, const sfx_t *sc, int c
 	}
 }
 
-static void dmaHD_PaintChannelFrom16_dmaEX2(channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset) 
+static void dmaHD_PaintChannelFrom16_dmaEX2(channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset)
 {
 	int data, rvol, lvol, i, so;
 	portable_samplepair_t *samp = &dmaHD_paintbuffer[bufferOffset];
@@ -598,8 +598,8 @@ static void dmaHD_PaintChannelFrom16_dmaEX2(channel_t *ch, const sfx_t *sc, int 
 		lvol = ch->l.bassvol * dmaHD_snd_vol;
 		tsamples = &samples[so];
 		out = (int*)samp;
-		for (i = 0; i < count; i++) 
-		{ 
+		for (i = 0; i < count; i++)
+		{
 			data = (*tsamples * lvol) >> 8; ++tsamples;
 			*out += data; ++out; // L
 			*out += data; ++out; // R
@@ -619,7 +619,7 @@ static void dmaHD_PaintChannelFrom16_dmaEX2(channel_t *ch, const sfx_t *sc, int 
 		tsamples = &samples[so];
 		out = (int*)samp;
 		for (i = 0; i < count; i++)
-		{ 
+		{
 			*out += (*tsamples * lvol) >> 8; ++out; // L
 			*out += (*tsamples * rvol) >> 8; ++out; // R
 			++tsamples;
@@ -637,7 +637,7 @@ static void dmaHD_PaintChannelFrom16_dmaEX2(channel_t *ch, const sfx_t *sc, int 
 		tsamples = &samples[so];
 		out = (int*)samp;
 		for (i = 0; i < count; i++)
-		{ 
+		{
 			*out += (*tsamples * lvol) >> 8; ++out; // L
 			*out += (*tsamples * rvol) >> 8; ++out; // R
 			++tsamples;
@@ -645,7 +645,7 @@ static void dmaHD_PaintChannelFrom16_dmaEX2(channel_t *ch, const sfx_t *sc, int 
 	}
 }
 
-static void dmaHD_PaintChannelFrom16_dmaEX(channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset) 
+static void dmaHD_PaintChannelFrom16_dmaEX(channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset)
 {
 	int rvol, lvol, i, so;
 	portable_samplepair_t *samp = &dmaHD_paintbuffer[bufferOffset];
@@ -666,20 +666,20 @@ static void dmaHD_PaintChannelFrom16_dmaEX(channel_t *ch, const sfx_t *sc, int c
 	lvol = ch->l.vol * dmaHD_snd_vol;
 	rvol = ch->r.vol * dmaHD_snd_vol;
 	// Behind viewer?
-	if (ch->fixed_origin && ch->sodrot[0] < 0) 
+	if (ch->fixed_origin && ch->sodrot[0] < 0)
 	{
 		if (lvol < rvol) lvol = -lvol; else rvol = -rvol;
 	}
 	out = (int*)samp;
-	for (i = 0; i < count; i++) 
-	{ 
+	for (i = 0; i < count; i++)
+	{
 		*out += ((*samples * lvol) >> 8) + ((*bsamples * lvol) >> 8); ++out; // L
 		*out += ((*samples * rvol) >> 8) + ((*bsamples * rvol) >> 8); ++out; // R
 		++samples; ++bsamples;
 	}
 }
 
-static void dmaHD_PaintChannelFrom16(channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset) 
+static void dmaHD_PaintChannelFrom16(channel_t *ch, const sfx_t *sc, int count, int sampleOffset, int bufferOffset)
 {
 	switch (dmaHD_Mixer->integer)
 	{
@@ -713,7 +713,7 @@ extern short*   snd_out;
 
 extern void S_TransferPaintBuffer(int endtime, byte* buffer, portable_samplepair_t paintbuffer[]);
 
-void dmaHD_PaintChannels( int endtime ) 
+void dmaHD_PaintChannels( int endtime )
 {
 	static qboolean muted = qfalse;
 	byte	*buffer;
@@ -727,9 +727,9 @@ void dmaHD_PaintChannels( int endtime )
 	int		stream;
 #endif
 
-	dmaHD_snd_vol = 
+	dmaHD_snd_vol =
 #ifdef MAX_RAW_STREAMS
-		(s_muted->integer) ? 0 : 
+		(s_muted->integer) ? 0 :
 #endif
 		s_volume->value*256;
 
@@ -751,11 +751,11 @@ void dmaHD_PaintChannels( int endtime )
 		muted = qfalse;
 	}
 
-	while ( s_paintedtime < endtime ) 
+	while ( s_paintedtime < endtime )
 	{
 		// if paintbuffer is smaller than DMA buffer we may need to fill it multiple times
 		end = endtime;
-		if ((endtime - s_paintedtime) >= DMAHD_PAINTBUFFER_SIZE ) 
+		if ((endtime - s_paintedtime) >= DMAHD_PAINTBUFFER_SIZE )
 		{
 			end = s_paintedtime + DMAHD_PAINTBUFFER_SIZE;
 		}
@@ -763,14 +763,14 @@ void dmaHD_PaintChannels( int endtime )
 #ifdef MAX_RAW_STREAMS
 		// clear the paint buffer and mix any raw samples...
 		Com_Memset(dmaHD_paintbuffer, 0, sizeof (dmaHD_paintbuffer));
-		for (stream = 0; stream < MAX_RAW_STREAMS; stream++) 
+		for (stream = 0; stream < MAX_RAW_STREAMS; stream++)
 		{
 			if (s_rawend[stream] >= s_paintedtime)
 			{
 				// copy from the streaming sound source
 				const portable_samplepair_t *rawsamples = s_rawsamples[stream];
 				const int stop = (end < s_rawend[stream]) ? end : s_rawend[stream];
-				for ( i = s_paintedtime ; i < stop ; i++ ) 
+				for ( i = s_paintedtime ; i < stop ; i++ )
 				{
 					const int s = i&(MAX_RAW_SAMPLES-1);
 					dmaHD_paintbuffer[i-s_paintedtime].left += rawsamples[s].left;
@@ -780,11 +780,11 @@ void dmaHD_PaintChannels( int endtime )
 		}
 #else
 		// clear the paint buffer to either music or zeros
-		if ( s_rawend < s_paintedtime ) 
+		if ( s_rawend < s_paintedtime )
 		{
 			Com_Memset(dmaHD_paintbuffer, 0, (end - s_paintedtime) * sizeof(portable_samplepair_t));
 		}
-		else 
+		else
 		{
 			// copy from the streaming sound source
 			int		s;
@@ -792,13 +792,13 @@ void dmaHD_PaintChannels( int endtime )
 
 			stop = (end < s_rawend) ? end : s_rawend;
 
-			for ( i = s_paintedtime ; i < stop ; i++ ) 
+			for ( i = s_paintedtime ; i < stop ; i++ )
 			{
 				s = i&(MAX_RAW_SAMPLES-1);
 				dmaHD_paintbuffer[i-s_paintedtime].left = s_rawsamples[s].left;
 				dmaHD_paintbuffer[i-s_paintedtime].right = s_rawsamples[s].right;
 			}
-			for ( ; i < end ; i++ ) 
+			for ( ; i < end ; i++ )
 			{
 				dmaHD_paintbuffer[i-s_paintedtime].left = 0;
 				dmaHD_paintbuffer[i-s_paintedtime].right = 0;
@@ -808,7 +808,7 @@ void dmaHD_PaintChannels( int endtime )
 
 		// paint in the channels.
 		ch = s_channels;
-		for ( i = 0; i < MAX_CHANNELS ; i++, ch++ ) 
+		for ( i = 0; i < MAX_CHANNELS ; i++, ch++ )
 		{
 			if (!ch->thesfx) continue;
 
@@ -823,7 +823,7 @@ void dmaHD_PaintChannels( int endtime )
 		// paint in the looped channels.
 		ch = loop_channels;
 		for (i = 0; i < numLoopChannels ; i++, ch++)
-		{		
+		{
 			if (!ch->thesfx) continue;
 
 			ltime = s_paintedtime;
@@ -831,13 +831,13 @@ void dmaHD_PaintChannels( int endtime )
 
 			if (sc->soundData == NULL || sc->soundLength == 0) continue;
 			// we might have to make two passes if it is a looping sound effect and the end of the sample is hit
-			do 
+			do
 			{
 				sampleOffset = (ltime % sc->soundLength);
 				count = end - ltime;
 				if (sampleOffset + count >= sc->soundLength) count = sc->soundLength - sampleOffset;
-				if (count > 0) 
-				{	
+				if (count > 0)
+				{
 					dmaHD_PaintChannelFrom16(ch, sc, count, sampleOffset, ltime - s_paintedtime);
 					ltime += count;
 				}
@@ -847,7 +847,7 @@ void dmaHD_PaintChannels( int endtime )
 		// TODO: quake3e commit 6c7b91612c515b82d04e89076118f3d3ab669ea6 introduced mitigations
 		//       for sound leaks in low FPS situations. The dmaHD engine probably needs to be adjusted
 		//       accordingly.
- 
+
 		// transfer out according to DMA format
 		S_TransferPaintBuffer( end, buffer, dmaHD_paintbuffer );
 		s_paintedtime = end;
@@ -922,7 +922,7 @@ void dmaHD_SpatializeOrigin_HHRTF(vec3_t so, channel_t* ch)
 	// Calculate length of sound origin direction vector.
 	distl = (int)VectorNormalize(sodl); // left
 	distr = (int)VectorNormalize(sodr); // right
-	
+
 	// Close enough to be at full volume?
 	if (distl < 80) distl = 0; // left
 	if (distr < 80) distr = 0; // right
@@ -954,7 +954,7 @@ void dmaHD_SpatializeOrigin_HHRTF(vec3_t so, channel_t* ch)
 		//if (ch->fixed_origin)
 		{
 			// Sound originating from behind viewer
-			if (ch->sodrot[0] < 0) 
+			if (ch->sodrot[0] < 0)
 			{
 				ch->l.vol *= (1.0 + (ch->sodrot[0] * 0.05f));
 				ch->r.vol *= (1.0 + (ch->sodrot[0] * 0.05f));
@@ -1010,7 +1010,7 @@ void dmaHD_SpatializeOrigin_dmaEX2(vec3_t so, channel_t* ch)
 	VectorNormalize(ch->sodrot);
 	// Calculate length of sound origin direction vector.
 	dist = (int)VectorNormalize(sod); // left
-	
+
 	// Close enough to be at full volume?
 	if (dist < 0) dist = 0; // left
 
@@ -1048,7 +1048,7 @@ void dmaHD_SpatializeOrigin_dmaEX2(vec3_t so, channel_t* ch)
 		ch->r.reverbvol *= 0.5 * (1.0 - dot);
 
 		// Sound originating from behind viewer: decrease treble + reverb
-		if (ch->sodrot[0] < 0) 
+		if (ch->sodrot[0] < 0)
 		{
 			ch->l.vol *= (1.0 + (ch->sodrot[0] * 0.5));
 			ch->r.vol *= (1.0 + (ch->sodrot[0] * 0.5));
@@ -1059,7 +1059,7 @@ void dmaHD_SpatializeOrigin_dmaEX2(vec3_t so, channel_t* ch)
 			if (ch->sodrot[1] < 0) ch->r.reverbvol = 0;
 			else if (ch->sodrot[1] > 0) ch->l.reverbvol = 0;
 		}
-		
+
 		// Sound originating from above viewer (decrease bass)
 		// Sound originating from below viewer (increase bass)
 		ch->l.bassvol *= ((1 - ch->sodrot[2]) * 0.5);
@@ -1087,7 +1087,7 @@ void dmaHD_SpatializeOrigin_dmaEX(vec3_t origin, channel_t* ch)
 	int tmp;
 
 	const float dist_mult = SOUND_ATTENUATE;
-	
+
 	// calculate stereo seperation and distance attenuation
 	VectorSubtract(origin, g_listener_origin, source_vec);
 
@@ -1096,7 +1096,7 @@ void dmaHD_SpatializeOrigin_dmaEX(vec3_t origin, channel_t* ch)
 	dist -= SOUND_FULLVOLUME;
 	if (dist < 0) dist = 0; // close enough to be at full volume
 	dist *= dist_mult;		// different attenuation levels
-	
+
 	VectorRotate(source_vec, g_listener_axis, ch->sodrot);
 
 	dot = -ch->sodrot[1];
@@ -1150,7 +1150,7 @@ All sounds are on the same cycle, so any duplicates can just
 sum up the channel multipliers.
 ==================
 */
-void dmaHD_AddLoopSounds (void) 
+void dmaHD_AddLoopSounds (void)
 {
 	int			i, time;
 	channel_t	*ch;
@@ -1163,10 +1163,10 @@ void dmaHD_AddLoopSounds (void)
 
 	loopFrame++;
 	//#pragma omp parallel for private(loop, ch)
-	for (i = 0 ; i < MAX_GENTITIES; i++) 
+	for (i = 0 ; i < MAX_GENTITIES; i++)
 	{
 		if (numLoopChannels >= MAX_CHANNELS) continue;
-		
+
 		loop = &loopSounds[i];
 		// already merged into an earlier sound
 		if (!loop->active || loop->mergeFrame == loopFrame) continue;
@@ -1189,7 +1189,7 @@ void dmaHD_AddLoopSounds (void)
 		ch->r.bassvol = VOLCLAMP(ch->r.bassvol);
 		ch->thesfx = loop->sfx;
 		ch->doppler = qfalse;
-		
+
 		//#pragma omp critical
 		{
 			numLoopChannels++;
@@ -1222,16 +1222,16 @@ void dmaHD_Respatialize( int entityNum, const vec3_t head, vec3_t axis[3], int i
 	VectorCopy(axis[1], g_listener_axis[1]);
 	VectorCopy(axis[2], g_listener_axis[2]);
 
-	// update spatialization for dynamic sounds	
+	// update spatialization for dynamic sounds
 	//#pragma omp parallel for private(ch)
-	for (i = 0 ; i < MAX_CHANNELS; i++) 
+	for (i = 0 ; i < MAX_CHANNELS; i++)
 	{
 		ch = &s_channels[i];
 		if (!ch->thesfx) continue;
-		
+
 		dmaHD_SpatializeReset(ch);
 		// Anything coming from the view entity will always be full volume
-		if (ch->entnum == listener_number) 
+		if (ch->entnum == listener_number)
 		{
 			ch->l.vol = ch->master_vol;
 			ch->r.vol = ch->master_vol;
@@ -1247,8 +1247,8 @@ void dmaHD_Respatialize( int entityNum, const vec3_t head, vec3_t axis[3], int i
 					}
 					break;
 			}
-		} 
-		else 
+		}
+		else
 		{
 			if (ch->fixed_origin) { VectorCopy( ch->origin, origin ); }
 			else { VectorCopy( loopSounds[ ch->entnum ].origin, origin ); }
@@ -1268,7 +1268,7 @@ dmaHD_Update
 Called once each time through the main loop
 ============
 */
-void dmaHD_Update( int msec /*unused*/ )	
+void dmaHD_Update( int msec /*unused*/ )
 {
 	// TODO: The msec argument was introduced in commit 71b2f36719d74f579bd75ed62a64647f0eac15fd
 	//       and was thus not present in the original dmaHD implementation. One should probably
@@ -1280,7 +1280,7 @@ void dmaHD_Update( int msec /*unused*/ )
 	dmaHD_Update_Mix();
 }
 
-void dmaHD_Update_Mix(void) 
+void dmaHD_Update_Mix(void)
 {
 	unsigned endtime;
 	static int lastTime = 0.0f;
@@ -1288,7 +1288,7 @@ void dmaHD_Update_Mix(void)
 	static int lastsoundtime = -1;
 
 	if (!s_soundStarted || s_soundMuted) return;
-	
+
 	thisTime = Com_Milliseconds();
 
 	// Updates s_soundtime
@@ -1304,9 +1304,9 @@ void dmaHD_Update_Mix(void)
 	if ((sane = thisTime - lastTime) < 8) sane = 8; // ms since last mix (cap to 8ms @ 125fps)
 	op = (int)((float)(dma.speed * sane) * 0.001); // samples to mix based on last mix time
 	mixahead = (int)((float)dma.speed * s_mixahead->value);
-	
+
 	if (mixahead < op) mixahead = op;
-	
+
 	// mix ahead of current position
 	endtime = s_soundtime + mixahead;
 
@@ -1328,7 +1328,7 @@ void dmaHD_Update_Mix(void)
 dmaHD_Enabled
 ================
 */
-qboolean dmaHD_Enabled(void) 
+qboolean dmaHD_Enabled(void)
 {
 	if (dmaHD_Enable == NULL)
 		dmaHD_Enable = Cvar_Get("dmaHD_enable", "1", CVAR_ARCHIVE); //@p5yc0runn3r- Turn on by default
@@ -1339,16 +1339,16 @@ qboolean dmaHD_Enabled(void)
 // ====================================================================
 // User-setable variables
 // ====================================================================
-void dmaHD_SoundInfo(void) 
-{	
+void dmaHD_SoundInfo(void)
+{
 	Com_Printf("\n" );
 	Com_Printf("dmaHD 3D software sound engine by p5yc0runn3r\n");
-	
-	if (!s_soundStarted) 
+
+	if (!s_soundStarted)
 	{
 		Com_Printf (" Engine not started.\n");
-	} 
-	else 
+	}
+	else
 	{
 		switch (dmaHD_Mixer->integer)
 		{
@@ -1371,11 +1371,11 @@ void dmaHD_SoundInfo(void)
 	Com_Printf("\n" );
 }
 
-void dmaHD_SoundList(void) 
+void dmaHD_SoundList(void)
 {
 	int i;
 	sfx_t *sfx;
-	
+
 	Com_Printf("\n" );
 	Com_Printf("dmaHD HRTF sound engine by p5yc0runn3r\n");
 
@@ -1383,8 +1383,8 @@ void dmaHD_SoundList(void)
 	{
 		for (sfx = s_knownSfx, i = 0; i < s_numSfx; i++, sfx++)
 		{
-			Com_Printf(" %s %.2f KiB %s\n", 
-				sfx->soundName, (float)sfx->soundLength / 1024.0f, 
+			Com_Printf(" %s %.2f KiB %s\n",
+				sfx->soundName, (float)sfx->soundLength / 1024.0f,
 				(sfx->inMemory ? "" : "!"));
 		}
 		Com_Printf(" %d sounds in %.2f MiB\n", s_numSfx, (float)g_dmaHD_allocatedsoundmemory / 1048576.0f);
@@ -1402,7 +1402,7 @@ void dmaHD_SoundList(void)
 dmaHD_Init
 ================
 */
-qboolean dmaHD_Init(soundInterface_t *si) 
+qboolean dmaHD_Init(soundInterface_t *si)
 {
 	if (!si) return qfalse;
 
@@ -1410,9 +1410,9 @@ qboolean dmaHD_Init(soundInterface_t *si)
 	if (!dmaHD_Enabled()) return qtrue;
 
 	dmaHD_Mixer = Cvar_Get("dmaHD_mixer", "10", CVAR_ARCHIVE);
-	if (dmaHD_Mixer->integer != 10 && 
+	if (dmaHD_Mixer->integer != 10 &&
 		dmaHD_Mixer->integer != 11 &&
-		dmaHD_Mixer->integer != 20 && 
+		dmaHD_Mixer->integer != 20 &&
 		dmaHD_Mixer->integer != 21 &&
 		dmaHD_Mixer->integer != 30)
 	{
@@ -1421,12 +1421,12 @@ qboolean dmaHD_Init(soundInterface_t *si)
 	}
 
 	dmaEX_StereoSeparation = Cvar_Get("dmaEX_StereoSeparation", "0.9", CVAR_ARCHIVE);
-	if (dmaEX_StereoSeparation->value < 0.1) 
+	if (dmaEX_StereoSeparation->value < 0.1)
 	{
 		Cvar_Set("dmaEX_StereoSeparation", "0.1");
 		dmaEX_StereoSeparation = Cvar_Get("dmaEX_StereoSeparation", "0.9", CVAR_ARCHIVE);
 	}
-	else if (dmaEX_StereoSeparation->value > 2.0) 
+	else if (dmaEX_StereoSeparation->value > 2.0)
 	{
 		Cvar_Set("dmaEX_StereoSeparation", "2.0");
 		dmaEX_StereoSeparation = Cvar_Get("dmaEX_StereoSeparation", "0.9", CVAR_ARCHIVE);

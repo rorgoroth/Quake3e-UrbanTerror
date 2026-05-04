@@ -1157,7 +1157,7 @@ static void emit_CheckProc( vm_t *vm, instruction_t *ins )
 		uint32_t n = ins->opStack;
 		mov_rx_imm32( R11, n );
 		emit( PPC_ADD( R11, rOPSTACK, R11 ) );
-		emit( PPC_CMPLD( 0, R11, rOPSTACKTOP ) ); // 
+		emit( PPC_CMPLD( 0, R11, rOPSTACKTOP ) ); //
 
 		offset = branchOffset[FUNC_PSOF] - compiledOfs;
 		if ( (int16_t)offset == offset ) {

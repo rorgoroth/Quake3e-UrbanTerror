@@ -256,7 +256,7 @@ const char *Sys_Pwd( void )
 	Q_strncpyz( pwd, WtoA( buffer ), sizeof( pwd ) );
 
 	s = strrchr( pwd, PATH_SEP );
-	if ( s ) 
+	if ( s )
 		*s = '\0';
 	else // bogus case?
 	{
@@ -518,7 +518,7 @@ void *Sys_LoadFunction( void *handle, const char *name )
 {
 	void *symbol;
 
-	if ( handle == NULL || name == NULL || *name == '\0' ) 
+	if ( handle == NULL || name == NULL || *name == '\0' )
 	{
 		dll_err_count++;
 		return NULL;
@@ -639,7 +639,7 @@ SetDPIAwareness
 ==================
 */
 #if 0
-static void SetDPIAwareness( void ) 
+static void SetDPIAwareness( void )
 {
 	typedef HANDLE (WINAPI *pfnSetThreadDpiAwarenessContext)( HANDLE dpiContext );
 	typedef HRESULT (WINAPI *pfnSetProcessDpiAwareness)( int value );
@@ -779,7 +779,7 @@ static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS *ExceptionInfo )
 WinMain
 ==================
 */
-int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) 
+int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
 {
 	static char	sys_cmdline[ MAX_STRING_CHARS ];
 	char con_title[ MAX_CVAR_VALUE_STRING ];

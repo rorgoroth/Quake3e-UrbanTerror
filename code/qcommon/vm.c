@@ -971,7 +971,7 @@ static int InvertCondition( int op )
 		case OP_GTF: return OP_LEF;
 		case OP_GEF: return OP_LTF;
 
-		default: 
+		default:
 			Com_Error( ERR_DROP, "incorrect condition opcode %i", op );
 			return op;
 	}

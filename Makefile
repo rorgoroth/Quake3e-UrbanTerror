@@ -53,13 +53,13 @@ USE_URT_DEMO     = 1
 
 USE_RENDERER_DLOPEN = 1
 
-# valid options: opengl, vulkan, opengl2
-RENDERER_DEFAULT = opengl
-
-CNAME            = urbanterror-slim
-DNAME            = urbanterror-slim.ded
+CNAME            = quake3e
+DNAME            = quake3e.ded
 
 RENDERER_PREFIX  = $(CNAME)
+
+# valid options: opengl, vulkan, opengl2
+RENDERER_DEFAULT = vulkan
 
 
 ifeq ($(V),1)
@@ -373,12 +373,9 @@ ifeq ($(USE_Q3KEY),1)
 BASE_CFLAGS += -DUSE_Q3KEY
 endif
 
-
 ifeq ($(USE_URT_DEMO),1)
 BASE_CFLAGS += -DUSE_URT_DEMO
 endif
-
-
 
 ARCHEXT=
 
@@ -404,7 +401,8 @@ ifdef MINGW
 
     # We need to figure out the correct gcc and windres
     ifeq ($(ARCH),x86_64)
-      MINGW_PREFIXES=x86_64-w64-mingw32 amd64-mingw32msvc
+      MINGW_PREFIXES=x86_64-w64-mingw32
+      STRIP=x86_64-w64-mingw32-strip
     endif
     ifeq ($(ARCH),x86)
       MINGW_PREFIXES=i686-w64-mingw32 i586-mingw32msvc i686-pc-mingw32
@@ -443,18 +441,16 @@ ifdef MINGW
   endif
 
   BASE_CFLAGS += -Wall -Wimplicit -Wstrict-prototypes -DUSE_ICON -DMINGW=1
-
-  BASE_CFLAGS += -Wno-unused-result -fvisibility=hidden
-  BASE_CFLAGS += -ffunction-sections -flto
+  BASE_CFLAGS += -Wno-unused-result -Wno-self-assign
 
   ifeq ($(ARCH),x86_64)
     ARCHEXT = .x64
-    BASE_CFLAGS += -m64
-    OPTIMIZE = -O2 -ffast-math
+    BASE_CFLAGS += -m64 -Wno-incompatible-pointer-types
+    OPTIMIZE = -ffast-math
   endif
   ifeq ($(ARCH),x86)
     BASE_CFLAGS += -m32
-    OPTIMIZE = -O2 -march=i586 -mtune=i686 -ffast-math
+    OPTIMIZE = -ffast-math
   endif
 
   SHLIBEXT = dll
@@ -491,7 +487,7 @@ ifdef MINGW
     else
       CLIENT_LDFLAGS += -L$(MOUNT_DIR)/libcurl/windows/mingw/lib64
     endif
-    CLIENT_LDFLAGS += -lcurl -lz -lcrypt32
+    CLIENT_LDFLAGS += -lcurl -lwldap32 -lcrypt32 -lncrypt -lz -lzstd -lbrotlienc -lbrotlidec -lbrotlicommon -lpsl -liphlpapi -lsspicli
   endif
 
   ifeq ($(USE_OGG_VORBIS),1)

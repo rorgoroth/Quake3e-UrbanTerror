@@ -34,7 +34,7 @@ typedef struct {
 	char			messageString[MAX_STRING_CHARS];
 #ifdef USE_AUTH
 	char            serverAddress[MAX_STRING_CHARS];
-#endif	
+#endif
 } uiClientState_t;
 
 typedef enum {

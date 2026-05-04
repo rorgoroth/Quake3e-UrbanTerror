@@ -954,7 +954,7 @@ static void CL_CompleteDemoName(const char *args, int argNum )
         	Field_CompleteFilename( "demos", ".urtdemo", qfalse, FS_MATCH_ANY | FS_MATCH_STICK );
 #else
 		Field_CompleteFilename( "demos", "." DEMOEXT "??", qfalse, FS_MATCH_ANY | FS_MATCH_STICK | FS_MATCH_SUBDIRS );
-#endif	
+#endif
 		FS_SetFilenameCallback( NULL );
 	}
 }

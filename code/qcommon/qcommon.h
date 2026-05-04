@@ -34,11 +34,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #endif
 
 /* C99 defines __func__ */
-#if __STDC_VERSION__ < 199901L 
-#if __GNUC__ >= 2 || _MSC_VER >= 1300 
-#define __func__ __FUNCTION__ 
-#else 
-#define __func__ "(unknown)" 
+#if __STDC_VERSION__ < 199901L
+#if __GNUC__ >= 2 || _MSC_VER >= 1300
+#define __func__ __FUNCTION__
+#else
+#define __func__ "(unknown)"
 #endif
 #endif
 
@@ -249,7 +249,7 @@ typedef struct {
 
 	// incoming fragment assembly buffer
 	int			fragmentSequence;
-	int			fragmentLength;	
+	int			fragmentLength;
 	byte		fragmentBuffer[MAX_MSGLEN];
 
 	// outgoing fragment buffer
@@ -353,7 +353,7 @@ enum svc_ops_e {
 //
 enum clc_ops_e {
 	clc_bad,
-	clc_nop, 		
+	clc_nop,
 	clc_move,				// [[usercmd_t]
 	clc_moveNoDelta,		// [[usercmd_t]
 	clc_clientCommand,		// [string] message
@@ -842,9 +842,9 @@ const char *FS_ReferencedPakNamesServer( const char *mapname );
 const char *FS_ReferencedPakChecksums( void );
 const char *FS_ReferencedPakChecksumsServer( const char *mapname );
 const char *FS_ReferencedPakPureChecksums( int maxlen );
-// Returns a space separated string containing the checksums of all loaded 
-// AND referenced pk3 files. Servers with sv_pure set will get this string 
-// back from clients for pure validation 
+// Returns a space separated string containing the checksums of all loaded
+// AND referenced pk3 files. Servers with sv_pure set will get this string
+// back from clients for pure validation
 
 void FS_ClearPakReferences( int flags );
 // clears referenced booleans on loaded pk3s
@@ -888,7 +888,7 @@ void *FS_LoadLibrary( const char *name );
 
 typedef qboolean ( *fnamecallback_f )( const char *filename, int length );
 
-void FS_SetFilenameCallback( fnamecallback_f func ); 
+void FS_SetFilenameCallback( fnamecallback_f func );
 
 char *FS_CopyString( const char *in );
 

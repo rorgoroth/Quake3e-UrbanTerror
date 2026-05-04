@@ -499,7 +499,7 @@ static void Console_Key( int key ) {
 		return;
 	}
 
-	
+
 	// pass to the normal editline routine
 	Field_KeyDownEvent( &g_consoleField, key );
 }

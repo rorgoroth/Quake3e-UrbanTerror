@@ -2303,10 +2303,10 @@ int BotLoadChatFile(int chatstate, const char *chatfile, const char *chatname)
 				}
 				continue;
 			}
-			if( strcmp( chatfile, ichatdata[n]->filename ) != 0 ) { 
+			if( strcmp( chatfile, ichatdata[n]->filename ) != 0 ) {
 				continue;
 			}
-			if( strcmp( chatname, ichatdata[n]->chatname ) != 0 ) { 
+			if( strcmp( chatname, ichatdata[n]->chatname ) != 0 ) {
 				continue;
 			}
 			cs->chat = ichatdata[n]->chat;
@@ -2354,7 +2354,7 @@ static int BotExpandChatMessage(char *outmessage, int size, const char *message,
 	msgptr = message;
 	outputbuf = outmessage;
 	len = 0;
-	
+
 	while( *msgptr != '\0' )
 	{
 		if ( *msgptr == ESCAPE_CHAR )
@@ -2394,7 +2394,7 @@ static int BotExpandChatMessage(char *outmessage, int size, const char *message,
 							//replace the reply synonyms in the variables
 							BotReplaceReplySynonyms( temp, sizeof( temp ), vcontext );
 						}
-						else 
+						else
 						{
 							//replace synonyms in the variable context
 							BotReplaceSynonyms( temp, sizeof( temp ), vcontext );

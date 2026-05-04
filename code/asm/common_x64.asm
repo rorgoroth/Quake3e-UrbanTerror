@@ -33,7 +33,7 @@ Q_longjmp_c PROC
 	mov r13, [rcx+56]
 	mov r12, [rcx+48]
 	mov rdi, [rcx+40]
-	mov rsi, [rcx+32] 
+	mov rsi, [rcx+32]
 	mov rbx, [rcx+24]
 	mov rbp, [rcx+16]
 	mov rsp, [rcx+ 8]

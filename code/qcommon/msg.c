@@ -89,7 +89,7 @@ void MSG_Copy(msg_t *buf, byte *data, int length, const msg_t *src)
 =============================================================================
 
 bit functions
-  
+
 =============================================================================
 */
 
@@ -114,7 +114,7 @@ void MSG_WriteBits( msg_t *msg, int value, int bits ) {
 			msg->bit += 8;
 		} else if ( bits == 16 ) {
 			short temp = value;
-			
+
 			CopyLittleShort(&msg->data[msg->cursize], &temp);
 			msg->cursize += 2;
 			msg->bit += 16;
@@ -198,7 +198,7 @@ static int MSG_ReadBits( msg_t *msg, int bits ) {
 		const int nbits = bits & 7;
 		int bitIndex = msg->bit; // dereference optimization
 		if ( nbits )
-		{		
+		{
 			for ( i = 0; i < nbits; i++ ) {
 				value |= HuffmanGetBit( buffer, bitIndex ) << i;
 				bitIndex++;
@@ -285,7 +285,7 @@ void MSG_WriteString( msg_t *sb, const char *s ) {
 	l = s ? strlen( s ) : 0;
 	if ( l >= MAX_STRING_CHARS ) {
 		Com_Printf( "MSG_WriteString: MAX_STRING_CHARS\n" );
-		l = 0; 
+		l = 0;
 	}
 
 	for ( i = 0 ; i < l; i++ ) {
@@ -307,7 +307,7 @@ void MSG_WriteBigString( msg_t *sb, const char *s ) {
 	l = s ? strlen( s ) : 0;
 	if ( l >= BIG_INFO_STRING ) {
 		Com_Printf( "MSG_WriteBigString: BIG_INFO_STRING\n" );
-		l = 0; 
+		l = 0;
 	}
 
 	for ( i = 0 ; i < l ; i++ ) {
@@ -340,63 +340,63 @@ void MSG_WriteAngle16( msg_t *sb, float f ) {
 // returns -1 if no more characters are available
 int MSG_ReadChar (msg_t *msg ) {
 	int	c;
-	
+
 	c = (signed char)MSG_ReadBits( msg, 8 );
 	if ( msg->readcount > msg->cursize ) {
 		c = -1;
-	}	
-	
+	}
+
 	return c;
 }
 
 int MSG_ReadByte( msg_t *msg ) {
 	int	c;
-	
+
 	c = (unsigned char)MSG_ReadBits( msg, 8 );
 	if ( msg->readcount > msg->cursize ) {
 		c = -1;
-	}	
+	}
 	return c;
 }
 
 int MSG_ReadShort( msg_t *msg ) {
 	int	c;
-	
+
 	c = (short)MSG_ReadBits( msg, 16 );
 	if ( msg->readcount > msg->cursize ) {
 		c = -1;
-	}	
+	}
 
 	return c;
 }
 
 int MSG_ReadLong( msg_t *msg ) {
 	int	c;
-	
+
 	c = MSG_ReadBits( msg, 32 );
 	if ( msg->readcount > msg->cursize ) {
 		c = -1;
-	}	
-	
+	}
+
 	return c;
 }
 
 float MSG_ReadFloat( msg_t *msg ) {
 	floatint_t dat;
-	
+
 	dat.i = MSG_ReadBits( msg, 32 );
 	if ( msg->readcount > msg->cursize ) {
 		dat.f = -1;
-	}	
-	
-	return dat.f;	
+	}
+
+	return dat.f;
 }
 
 
 const char *MSG_ReadString( msg_t *msg ) {
 	static char	string[MAX_STRING_CHARS];
 	int	l, c;
-	
+
 	l = 0;
 	do {
 		c = MSG_ReadByte( msg ); // use ReadByte so -1 is out of bounds
@@ -413,9 +413,9 @@ const char *MSG_ReadString( msg_t *msg ) {
 		}
 		string[ l++ ] = c;
 	} while ( qtrue );
-	
+
 	string[ l ] = '\0';
-	
+
 	return string;
 }
 
@@ -423,7 +423,7 @@ const char *MSG_ReadString( msg_t *msg ) {
 const char *MSG_ReadBigString( msg_t *msg ) {
 	static char	string[ BIG_INFO_STRING ];
 	int	l, c;
-	
+
 	l = 0;
 	do {
 		c = MSG_ReadByte( msg ); // use ReadByte so -1 is out of bounds
@@ -440,9 +440,9 @@ const char *MSG_ReadBigString( msg_t *msg ) {
 		}
 		string[ l++ ] = c;
 	} while ( qtrue );
-	
+
 	string[ l ] = '\0';
-	
+
 	return string;
 }
 
@@ -467,9 +467,9 @@ const char *MSG_ReadStringLine( msg_t *msg ) {
 		}
 		string[ l++ ] = c;
 	} while ( qtrue );
-	
+
 	string[ l ] = '\0';
-	
+
 	return string;
 }
 
@@ -495,7 +495,7 @@ int MSG_ReadEntitynum( msg_t *msg ) {
 	} else {
 		return num;
 	}
-	
+
 }
 
 
@@ -526,7 +526,7 @@ extern cvar_t *cl_shownet;
 =============================================================================
 
 delta functions with keys
-  
+
 =============================================================================
 */
 
@@ -648,7 +648,7 @@ void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, const usercmd_t *from, usercm
 =============================================================================
 
 entityState_t communication
-  
+
 =============================================================================
 */
 
@@ -827,7 +827,7 @@ void MSG_WriteDeltaEntity( msg_t *msg, const entityState_t *from, const entitySt
 				MSG_WriteBits( msg, 0, 1 );
 			} else {
 				MSG_WriteBits( msg, 1, 1 );
-				if ( trunc == fullFloat && trunc + FLOAT_INT_BIAS >= 0 && 
+				if ( trunc == fullFloat && trunc + FLOAT_INT_BIAS >= 0 &&
 					trunc + FLOAT_INT_BIAS < ( 1 << FLOAT_INT_BITS ) ) {
 					// send as small integer
 					MSG_WriteBits( msg, 0, 1 );
@@ -884,7 +884,7 @@ void MSG_ReadDeltaEntity( msg_t *msg, const entityState_t *from, entityState_t *
 
 	// check for a remove
 	if ( MSG_ReadBits( msg, 1 ) == 1 ) {
-		Com_Memset( to, 0, sizeof( *to ) );	
+		Com_Memset( to, 0, sizeof( *to ) );
 		to->number = MAX_GENTITIES - 1;
 #ifndef DEDICATED
 		if ( cl_shownet && ( cl_shownet->integer >= 2 || cl_shownet->integer == -1 ) ) {
@@ -934,14 +934,14 @@ void MSG_ReadDeltaEntity( msg_t *msg, const entityState_t *from, entityState_t *
 			if ( field->bits == 0 ) {
 				// float
 				if ( MSG_ReadBits( msg, 1 ) == 0 ) {
-						*(float *)toF = 0.0f; 
+						*(float *)toF = 0.0f;
 				} else {
 					if ( MSG_ReadBits( msg, 1 ) == 0 ) {
 						// integral float
 						trunc = MSG_ReadBits( msg, FLOAT_INT_BITS );
 						// bias to allow equal parts positive and negative
 						trunc -= FLOAT_INT_BIAS;
-						*(float *)toF = trunc; 
+						*(float *)toF = trunc;
 						if ( print ) {
 							Com_Printf( "%s:%i ", field->name, trunc );
 						}
@@ -996,7 +996,7 @@ plyer_state_t communication
 // using the stringizing operator to save typing...
 #define	PSF(x) #x,(size_t)&((playerState_t*)0)->x
 
-static const netField_t playerStateFields[] = 
+static const netField_t playerStateFields[] =
 {
 { PSF(commandTime), 32 },
 { PSF(origin[0]), 0 },
@@ -1032,7 +1032,7 @@ static const netField_t playerStateFields[] =
 { PSF(damagePitch), 8 },
 { PSF(damageCount), 8 },
 { PSF(generic1), 8 },
-{ PSF(pm_type), 8 },					
+{ PSF(pm_type), 8 },
 { PSF(delta_angles[0]), 16 },
 { PSF(delta_angles[2]), 16 },
 { PSF(torsoTimer), 12 },
@@ -1101,7 +1101,7 @@ void MSG_WriteDeltaPlayerstate( msg_t *msg, const playerState_t *from, const pla
 			fullFloat = *(const float *)toF;
 			trunc = (int)fullFloat;
 
-			if ( trunc == fullFloat && trunc + FLOAT_INT_BIAS >= 0 && 
+			if ( trunc == fullFloat && trunc + FLOAT_INT_BIAS >= 0 &&
 				trunc + FLOAT_INT_BIAS < ( 1 << FLOAT_INT_BITS ) ) {
 				// send as small integer
 				MSG_WriteBits( msg, 0, 1 );
@@ -1226,7 +1226,7 @@ void MSG_ReadDeltaPlayerstate( msg_t *msg, const playerState_t *from, playerStat
 		startBit = ( msg->readcount - 1 ) * 8 + msg->bit - GENTITYNUM_BITS;
 	}
 
-#ifndef DEDICATED	
+#ifndef DEDICATED
 	// shownet 2/3 will interleave with other printed info, -2 will
 	// just print the delta records
 	if ( cl_shownet && ( cl_shownet->integer >= 2 || cl_shownet->integer == -2 ) ) {
@@ -1261,7 +1261,7 @@ void MSG_ReadDeltaPlayerstate( msg_t *msg, const playerState_t *from, playerStat
 					trunc = MSG_ReadBits( msg, FLOAT_INT_BITS );
 					// bias to allow equal parts positive and negative
 					trunc -= FLOAT_INT_BIAS;
-					*(float *)toF = trunc; 
+					*(float *)toF = trunc;
 					if ( print ) {
 						Com_Printf( "%s:%i ", field->name, trunc );
 					}

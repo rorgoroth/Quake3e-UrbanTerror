@@ -1891,7 +1891,7 @@ __recompile:
 							case OP_LOAD2:
 								if ( reg->ext != Z_EXT16 ) {
 									emit( UXTH( rx[0], rx[0] ) ); // r0 = (unsigned short) r0
-									// invalidate any mappings that overlaps with high [16..31] bits 
+									// invalidate any mappings that overlaps with high [16..31] bits
 									//var.addr += 2; var.size = 2;
 									//wipe_reg_range( rx_regs + rx[0], &var );
 									reduce_map_size( reg, 2 );

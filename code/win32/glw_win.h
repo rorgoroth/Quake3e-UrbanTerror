@@ -39,7 +39,7 @@ typedef struct
 	qboolean	pixelFormatSet;
 
 	int			desktopBitsPixel;
-	int			desktopWidth; 
+	int			desktopWidth;
 	int			desktopHeight;
 	int			desktopX;		// can be negative
 	int			desktopY;		// can be negative

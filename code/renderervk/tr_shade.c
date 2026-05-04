@@ -1268,7 +1268,7 @@ void RB_StageIteratorGeneric( void )
 		if ( !fogCollapse ) {
 #ifdef USE_VULKAN
 			rebindIndex = ProjectDlightTexture();
-#else	
+#else
 			ProjectDlightTexture();
 #endif
 		}

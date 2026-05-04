@@ -61,7 +61,7 @@ void Log_Open( const char *filename )
 {
 	const char *ospath;
 
-	if ( !LibVarValue( "log", "0" ) ) 
+	if ( !LibVarValue( "log", "0" ) )
 		return;
 
 	if ( !filename || !*filename )

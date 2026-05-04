@@ -458,7 +458,7 @@ void SV_PrintClientStateChange( const client_t *cl, clientState_t newState ) {
 	} else {
 		Com_Printf( "Going from %s to %s for client %d\n", SV_GetStateName( cl->state ), SV_GetStateName( newState ), (int)(cl - svs.clients) );
 	}
-	
+
 }
 
 
@@ -1425,7 +1425,7 @@ static int SV_WriteDownloadToClient( client_t *cl )
 	if(!cl->download)
 	{
 		qboolean gamePak = qfalse;
-	
+
  		// Chop off filename extension.
 		Q_strncpyz( pakbuf, cl->downloadName, sizeof( pakbuf ) );
 		pakptr = strrchr( pakbuf, '.' );

@@ -188,7 +188,7 @@ void SV_AddServerCommand( client_t *client, const char *cmd ) {
 =================
 SV_SendServerCommand
 
-Sends a reliable command string to be interpreted by 
+Sends a reliable command string to be interpreted by
 the client game module: "cp", "print", "chat", etc
 A NULL client will broadcast to all clients
 =================
@@ -198,7 +198,7 @@ void QDECL SV_SendServerCommand( client_t *cl, const char *fmt, ... ) {
 	char		message[MAX_STRING_CHARS+128]; // slightly larger than allowed, to detect overflows
 	client_t	*client;
 	int			j, len;
-	
+
 	va_start( argptr, fmt );
 	len = Q_vsnprintf( message, sizeof( message ), fmt, argptr );
 	va_end( argptr );
@@ -282,7 +282,7 @@ static void SV_MasterHeartbeat( const char *message )
 		{
 			sv_master[i]->modified = qfalse;
 			svs.masterResolveTime[i] = svs.time + MASTERDNS_MSEC;
-			
+
 			if(netenabled & NET_ENABLEV4)
 			{
 				Com_Printf("Resolving %s (IPv4)\n", sv_master[i]->string);
@@ -293,7 +293,7 @@ static void SV_MasterHeartbeat( const char *message )
 					// if no port was specified, use the default master port
 					adr[i][0].port = BigShort(PORT_MASTER);
 				}
-				
+
 				if(res)
 					Com_Printf( "%s resolved to %s\n", sv_master[i]->string, NET_AdrToStringwPort( &adr[i][0] ) );
 				else
@@ -310,7 +310,7 @@ static void SV_MasterHeartbeat( const char *message )
 					// if no port was specified, use the default master port
 					adr[i][1].port = BigShort(PORT_MASTER);
 				}
-				
+
 				if(res)
 					Com_Printf( "%s resolved to %s\n", sv_master[i]->string, NET_AdrToStringwPort( &adr[i][1] ) );
 				else
@@ -492,7 +492,7 @@ static leakyBucket_t *SVC_BucketForAddress( const netadr_t *address, int burst, 
 			} else {
 				bucketHashes[ bucket->hash ] = bucket->next;
 			}
-			
+
 			if ( bucket->next != NULL ) {
 				bucket->next->prev = bucket->prev;
 			}
@@ -720,12 +720,12 @@ static void SVC_Status( const netadr_t *from ) {
 		if ( cl->state >= CS_CONNECTED ) {
 
 			ps = SV_GameClientNum( i );
-			playerLength = Com_sprintf( player, sizeof( player ), "%i %i \"%s\"\n", 
+			playerLength = Com_sprintf( player, sizeof( player ), "%i %i \"%s\"\n",
 				ps->persistant[ PERS_SCORE ], cl->ping, cl->name );
-			
+
 			if ( statusLength + playerLength >= MAX_PACKETLEN-4 )
 				break; // can't hold any more
-			
+
 			s = Q_stradd( s, player );
 			statusLength += playerLength;
 		}
@@ -807,11 +807,11 @@ static void SVC_Info( const netadr_t *from ) {
 	Info_SetValueForKey( infostring, "gametype", va( "%i", sv_gametype->integer ) );
 	Info_SetValueForKey( infostring, "pure", va( "%i", sv.pure ) );
 	Info_SetValueForKey( infostring, "g_needpass", va( "%d", Cvar_VariableIntegerValue( "g_needpass" ) ) );
-	
+
 #ifdef USE_AUTH
 	Info_SetValueForKey( infostring, "auth", Cvar_VariableString("auth") );
 #endif
-	
+
 	gamedir = Cvar_VariableString( "fs_game" );
 	if ( *gamedir != '\0' ) {
 		Info_SetValueForKey( infostring, "game", gamedir );
@@ -977,7 +977,7 @@ static void SV_ConnectionlessPacket( const netadr_t *from, msg_t *msg ) {
 	} else if (!Q_stricmp(c, "connect")) {
 		SV_DirectConnect( from );
 #ifndef STANDALONE
-	} 
+	}
 	else if (!Q_stricmp(c, "ipAuthorize")) {
 		// removed from codebase since stateless challenges
 #endif
@@ -1127,7 +1127,7 @@ static void SV_CalcPings( void ) {
 ==================
 SV_CheckTimeouts
 
-If a packet has not been received from a client for timeout->integer 
+If a packet has not been received from a client for timeout->integer
 seconds, drop the connection.  Server time is used instead of
 realtime to avoid dropping the local client while debugging.
 
@@ -1300,9 +1300,9 @@ static void SV_Restart( const char *reason ) {
 
 	sv.time = 0; // force level time reset
 	sv.restartTime = 0;
-	
+
 	Cvar_VariableStringBuffer( "mapname", mapName, sizeof( mapName ) );
-	
+
 	if ( sv_shutdown ) {
 		SV_Shutdown( reason );
 	}
@@ -1462,7 +1462,7 @@ int SV_RateMsec( const client_t *client )
 {
 	int rate, rateMsec;
 	int messageSize;
-	
+
 	if ( !client->rate )
 		return 0;
 
@@ -1474,10 +1474,10 @@ int SV_RateMsec( const client_t *client )
 	else
 #endif
 		messageSize += UDPIP_HEADER_SIZE;
-		
+
 	rateMsec = messageSize * 1000 / ((int) (client->rate * com_timescale->value));
 	rate = Sys_Milliseconds() - client->netchan.lastSentTime;
-	
+
 	if ( rate > rateMsec )
 		return 0;
 	else

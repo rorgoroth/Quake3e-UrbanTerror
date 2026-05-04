@@ -449,7 +449,7 @@ static void SV_AddEntitiesVisibleFromPoint( const vec3_t origin, clientSnapshot_
 SV_InitSnapshotStorage
 ===============
 */
-void SV_InitSnapshotStorage( void ) 
+void SV_InitSnapshotStorage( void )
 {
 	// initialize snapshot storage
 	Com_Memset( svs.snapFrames, 0, sizeof( svs.snapFrames ) );
@@ -471,10 +471,10 @@ SV_IssueNewSnapshot
 This should be called before any new client snaphot built
 ===============
 */
-void SV_IssueNewSnapshot( void ) 
+void SV_IssueNewSnapshot( void )
 {
 	svs.currFrame = NULL;
-	
+
 	// value that clients can use even for their empty frames
 	// as it will not increment on new snapshot built
 	svs.currentSnapshotFrame = svs.snapshotFrame;
@@ -488,11 +488,11 @@ SV_BuildCommonSnapshot
 This always allocates new common snapshot frame
 ===============
 */
-static void SV_BuildCommonSnapshot( void ) 
+static void SV_BuildCommonSnapshot( void )
 {
 	sharedEntity_t	*list[ MAX_GENTITIES ];
 	sharedEntity_t	*ent;
-	
+
 	snapshotFrame_t	*tmp;
 	snapshotFrame_t	*sf;
 
@@ -512,7 +512,7 @@ static void SV_BuildCommonSnapshot( void )
 			if ( !ent->r.linked ) {
 				continue;
 			}
-	
+
 			if ( ent->s.number != num ) {
 				Com_DPrintf( "FIXING ENT->S.NUMBER %i => %i\n", ent->s.number, num );
 				ent->s.number = num;
@@ -531,7 +531,7 @@ static void SV_BuildCommonSnapshot( void )
 	sv.snapshotCounter = -1;
 
 	sf = &svs.snapFrames[ svs.snapshotFrame % NUM_SNAPSHOT_FRAMES ];
-	
+
 	// track last valid frame
 	if ( svs.snapshotFrame - svs.lastValidFrame > (NUM_SNAPSHOT_FRAMES-1) ) {
 		svs.lastValidFrame = svs.snapshotFrame - (NUM_SNAPSHOT_FRAMES-1);
@@ -558,7 +558,7 @@ static void SV_BuildCommonSnapshot( void )
 	sf->count = count;
 	svs.freeStorageEntities -= count;
 
-	sf->start = svs.currentStoragePosition; 
+	sf->start = svs.currentStoragePosition;
 	svs.currentStoragePosition = ( svs.currentStoragePosition + count ) % svs.numSnapshotEntities;
 
 	sf->frameNum = svs.snapshotFrame;
@@ -609,7 +609,7 @@ static void SV_BuildClientSnapshot( client_t *client ) {
 	// https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=62
 	frame->num_entities = 0;
 	frame->frameNum = svs.currentSnapshotFrame;
-	
+
 	if ( client->state == CS_ZOMBIE )
 		return;
 
@@ -661,7 +661,7 @@ static void SV_BuildClientSnapshot( client_t *client ) {
 	// to work correctly.  This also catches the error condition
 	// of an entity being included twice.
 	if ( entityNumbers.unordered ) {
-		SV_SortEntityNumbers( &entityNumbers.snapshotEntities[0], 
+		SV_SortEntityNumbers( &entityNumbers.snapshotEntities[0],
 			entityNumbers.numSnapshotEntities );
 	}
 
