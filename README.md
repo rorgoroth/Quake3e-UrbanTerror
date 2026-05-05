@@ -1,10 +1,8 @@
 # Quake3e Urban Terror
 
-This is a modern Quake III Arena engine aimed to be fast, secure and compatible with all existing Q3A mods. It is based on last non-SDL source dump of [ioquake3](https://github.com/ioquake/ioq3) with latest upstream fixes applied.
+This is a continuation of the innactive [urbanterror-slim](https://github.com/omg-urt/urbanterror-slim) project, kept fully up-to-date with all relevent changes from [Quake3e](https://github.com/ec-/Quake3e).
 
-This project is a continuation of innactive [urbanterror-slim](https://github.com/omg-urt/urbanterror-slim), kept fully up-to-date with all relevent changes from [Quake3e](https://github.com/ec-/Quake3e).
-
-Go to [rorgoroth/mingw-cmake-env/releases](https://github.com/rorgoroth/mingw-cmake-env/releases) to download latest Windows binaries.
+Go to [Releases](https://github.com/rorgoroth/Quake3e-UrbanTerror/releases) for Windows, Mac and Linux builds. You can also go to [rorgoroth/mingw-cmake-env/releases](https://github.com/rorgoroth/mingw-cmake-env/releases) to download latest Windows nightly binaries, however these are for build testing only and not recommeneded or supported.
 
 *This repository does not contain any game content so in order to play you must copy the resulting binaries into your existing Urban Terror installation.*
 
