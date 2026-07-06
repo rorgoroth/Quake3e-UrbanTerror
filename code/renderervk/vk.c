@@ -7409,7 +7409,8 @@ _retry:
 		// perform initial swapchain image layout transition
 		vk.swapchain_images_inited[ vk.cmd->swapchain_image_index ] = qtrue;
 		record_image_layout_transition( vk.cmd->command_buffer, vk.swapchain_images[ vk.cmd->swapchain_image_index ],
-			VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, vk.initSwapchainLayout, 0, 0 );
+			VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, vk.initSwapchainLayout,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0 );
 	}
 
 	// Ensure visibility of geometry buffers writes.
