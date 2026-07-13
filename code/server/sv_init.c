@@ -874,7 +874,7 @@ static void SV_FinalMessage( const char *message ) {
 		}
 	}
 
-	NET_FlushPacketQueue( 99999 );
+	NET_FlushPacketQueue( -99999 );
 }
 
 
