@@ -6511,7 +6511,7 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		attachment_blend_state.colorBlendOp = VK_BLEND_OP_ADD;
 		attachment_blend_state.alphaBlendOp = VK_BLEND_OP_ADD;
 
-		if ( def->allow_discard && vkSamples != VK_SAMPLE_COUNT_1_BIT ) {
+		if ( def->allow_discard && vkSamples != VK_SAMPLE_COUNT_1_BIT && depth_stencil_state.depthWriteEnable == VK_FALSE ) {
 			// try to reduce pixel fillrate for transparent surfaces, this yields 1..10% fps increase when multisampling in enabled
 			if ( attachment_blend_state.srcColorBlendFactor == VK_BLEND_FACTOR_SRC_ALPHA && attachment_blend_state.dstColorBlendFactor == VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA ) {
 				frag_spec_data[7].i = 1;
