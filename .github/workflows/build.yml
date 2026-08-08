@@ -128,7 +128,6 @@ jobs:
           file: |
             *.zip
           tag: ${{ steps.date.outputs.DATE }}
-          release_name: ${{ steps.tag.outputs.DATE }}
           overwrite: true
           file_glob: true
           draft: false
