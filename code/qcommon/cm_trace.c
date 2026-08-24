@@ -1394,7 +1394,12 @@ static void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, co
 		VectorCopy (end, tw.trace.endpos);
 	} else {
 		for ( i=0 ; i<3 ; i++ ) {
+#ifdef USE_FIXED_PRECISION
+			// fix ledge at {463, -1067, -39} on q3dm12
+			tw.trace.endpos[i] = start[i] + tw.trace.fraction * (double)(end[i] - start[i]);
+#else
 			tw.trace.endpos[i] = start[i] + tw.trace.fraction * (end[i] - start[i]);
+#endif
 		}
 	}
 
