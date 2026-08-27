@@ -902,6 +902,7 @@ void FS_SetFilenameCallback( fnamecallback_f func );
 
 char *FS_CopyString( const char *in );
 
+qboolean FS_CreatePath( const char *ospath );
 
 // AVI pipes
 
