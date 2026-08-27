@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define MAX_RIFF_CHUNKS 16
 
 #ifdef _WIN32
+#include <windows.h>
 #define USE_WIN32_NAMED_PIPES
 #define WIN32_HANDLE_VALID(h) ((h) && (h) != INVALID_HANDLE_VALUE)
 #endif
