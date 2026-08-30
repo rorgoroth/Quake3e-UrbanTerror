@@ -323,8 +323,6 @@ static	cvar_t		*fs_locked;
 static	cvar_t		*fs_excludeReference;
 
 static	searchpath_t	*fs_searchpaths;
-static	int			fs_readCount;			// total bytes read
-static	int			fs_loadCount;			// total files read
 static	int			fs_loadStack;			// total files in memory
 static	int			fs_packFiles;			// total number of files in all loaded packs
 
@@ -1874,7 +1872,6 @@ int FS_Read( void *buffer, int len, fileHandle_t f ) {
 	}
 
 	buf = (byte *)buffer;
-	fs_readCount += len;
 
 	if ( !fsh[f].zipFile ) {
 		remaining = len;
@@ -2203,7 +2200,6 @@ int FS_ReadFile( const char *qpath, void **buffer ) {
 				Com_Error( ERR_FATAL, "Read from journalDataFile failed" );
 			}
 
-			fs_loadCount++;
 			fs_loadStack++;
 
 			// guarantee that it will have a trailing 0 for string operations
@@ -2251,7 +2247,6 @@ int FS_ReadFile( const char *qpath, void **buffer ) {
 
 	*buffer = buf;
 
-	fs_loadCount++;
 	fs_loadStack++;
 
 	// guarantee that it will have a trailing 0 for string operations

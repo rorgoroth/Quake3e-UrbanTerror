@@ -30,8 +30,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // because they are an awful coherence problem
 static int c_active_windings;
 static int c_peak_windings;
-static int c_winding_allocs;
-static int c_winding_points;
 
 #if 0
 static void pw(winding_t *w)
@@ -53,8 +51,6 @@ static winding_t *AllocWinding( int points )
 	winding_t	*w;
 	size_t		s;
 
-	c_winding_allocs++;
-	c_winding_points += points;
 	c_active_windings++;
 	if ( c_active_windings > c_peak_windings )
 		c_peak_windings = c_active_windings;

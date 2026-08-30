@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // q_shared.h -- included first by ALL program modules.
 // A user mod should never modify this file
 
-#define Q3_VERSION            "UrtSlim-Q3e"
+#define Q3_VERSION            "ioQ3 1.35 urt 4.3.4"
 #ifndef SVN_VERSION
   #define SVN_VERSION Q3_VERSION
 #endif
@@ -35,7 +35,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // 1.32 released 7-10-2002
 
 //#define DEFAULT_GAME			"edawn"
-#define DEFAULT_GAME				"q3ut4"
+#define DEFAULT_GAME			"q3ut4"
 
 #define BASEGAME				"q3ut4"
 #define BASEDEMO				"demoq3"

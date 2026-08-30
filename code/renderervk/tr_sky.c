@@ -46,8 +46,9 @@ static const vec3_t sky_clip[6] =
 };
 
 static float	sky_mins[2][6], sky_maxs[2][6];
-static float	sky_min, sky_max;
+#ifndef USE_VULKAN
 static float	sky_min_depth;
+#endif
 
 /*
 ================
@@ -478,8 +479,6 @@ static void DrawSkySide( image_t *image, const int mins[2], const int maxs[2] )
 static void DrawSkyBox( const shader_t *shader )
 {
 	int		i;
-	sky_min = 0;
-	sky_max = 1;
 
 	for ( i = 0; i < 6; i++ )
 	{
@@ -638,9 +637,6 @@ static void R_BuildCloudData( const shaderCommands_t *input )
 
 	shader = input->shader;
 
-	sky_min = 1.0 / 256.0f;		// FIXME: not correct?
-	sky_max = 255.0 / 256.0f;
-
 	// set up for drawing
 	tess.numIndexes = 0;
 	tess.numVertexes = 0;
@@ -709,12 +705,14 @@ void R_InitSkyTexCoords( float heightCloud )
 	vec3_t skyVec;
 	vec3_t v;
 
+#ifndef USE_VULKAN
 	if ( !Q_stricmp( glConfig.renderer_string, "GDI Generic" ) && !Q_stricmp( glConfig.version_string, "1.1.0" ) ) {
 		// fix skybox rendering on MS software GL implementation
 		sky_min_depth = 0.999f;
 	} else {
 		sky_min_depth = 1.0;
 	}
+#endif
 
 	// init zfar so MakeSkyVec works even though
 	// a world hasn't been bounded

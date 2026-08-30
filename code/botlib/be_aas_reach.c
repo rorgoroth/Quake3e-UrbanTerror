@@ -62,6 +62,7 @@ extern botlib_import_t botimport;
 //area flag used for weapon jumping
 #define AREA_WEAPONJUMP						8192	//valid area to weapon jump to
 //number of reachabilities of each type
+#ifdef DEBUG
 static int reach_swim;			//swim
 static int reach_equalfloor;	//walk on floors with equal height
 static int reach_step;			//step up
@@ -75,14 +76,17 @@ static int reach_teleport;		//teleport
 static int reach_elevator;		//use an elevator
 static int reach_funcbob;		//use a func bob
 static int reach_grapple;		//grapple hook
+#endif // DEBUG
 #if 0
 static int reach_doublejump;	//double jump
 static int reach_rampjump;		//ramp jump
 static int reach_strafejump;	//strafe jump (just normal jump but further)
 static int reach_bfgjump;		//bfg jump
 #endif
+#ifdef DEBUG
 static int reach_rocketjump;	//rocket jump
 static int reach_jumppad;		//jump pads
+#endif // DEBUG
 //if true grapple reachabilities are skipped
 int calcgrapplereach;
 //linked reachability
@@ -897,7 +901,9 @@ static int AAS_Reachability_Swim(int area1num, int area2num)
 					//link the reachability
 					lreach->next = areareachability[area1num];
 					areareachability[area1num] = lreach;
+#ifdef DEBUG
 					reach_swim++;
+#endif // DEBUG
 					return qtrue;
 				} //end if
 			} //end if
@@ -1047,7 +1053,9 @@ static int AAS_Reachability_EqualFloorHeight(int area1num, int area2num)
 		//avoid rather small areas
 		//if (AAS_AreaGroundFaceArea(lreach->areanum) < 500) lreach->traveltime += 100;
 		//
+#ifdef DEBUG
 		reach_equalfloor++;
+#endif // DEBUG
 		return qtrue;
 	} //end if
 	return qfalse;
@@ -1397,7 +1405,9 @@ static int AAS_Reachability_Step_Barrier_WaterJump_WalkOffLedge(int area1num, in
 			//avoid rather small areas
 			//if (AAS_AreaGroundFaceArea(lreach->areanum) < 500) lreach->traveltime += 100;
 			//
+#ifdef DEBUG
 			reach_step++;
+#endif // DEBUG
 			return qtrue;
 		} //end if
 	} //end if
@@ -1450,7 +1460,9 @@ static int AAS_Reachability_Step_Barrier_WaterJump_WalkOffLedge(int area1num, in
 					lreach->next = areareachability[area1num];
 					areareachability[area1num] = lreach;
 					//we've got another waterjump reachability
+#ifdef DEBUG
 					reach_waterjump++;
+#endif // DEBUG
 					return qtrue;
 				} //end if
 			} //end if
@@ -1498,7 +1510,9 @@ static int AAS_Reachability_Step_Barrier_WaterJump_WalkOffLedge(int area1num, in
 					lreach->next = areareachability[area1num];
 					areareachability[area1num] = lreach;
 					//we've got another barrierjump reachability
+#ifdef DEBUG
 					reach_barrier++;
+#endif // DEBUG
 					return qtrue;
 				} //end if
 			} //end if
@@ -1545,7 +1559,9 @@ static int AAS_Reachability_Step_Barrier_WaterJump_WalkOffLedge(int area1num, in
 				lreach->next = areareachability[area1num];
 				areareachability[area1num] = lreach;
 				//we've got another walk reachability
+#ifdef DEBUG
 				reach_walk++;
+#endif // DEBUG
 				return qtrue;
 			} //end if
 			// if no maximum fall height set or less than the max
@@ -1596,7 +1612,9 @@ static int AAS_Reachability_Step_Barrier_WaterJump_WalkOffLedge(int area1num, in
 							lreach->next = areareachability[area1num];
 							areareachability[area1num] = lreach;
 							//
+#ifdef DEBUG
 							reach_walkoffledge++;
+#endif // DEBUG
 							//NOTE: don't create a weapon (rl, bfg) jump reachability here
 							//because it interferes with other reachabilities
 							//like the ladder reachability
@@ -2372,10 +2390,12 @@ static int AAS_Reachability_Jump(int area1num, int area2num)
 		lreach->next = areareachability[area1num];
 		areareachability[area1num] = lreach;
 		//
+#ifdef DEBUG
 		if ((traveltype & TRAVELTYPE_MASK) == TRAVEL_JUMP)
 			reach_jump++;
 		else
 			reach_walkoffledge++;
+#endif // DEBUG
 	} //end if
 	return qfalse;
 } //end of the function AAS_Reachability_Jump
@@ -2503,7 +2523,9 @@ static int AAS_Reachability_Ladder(int area1num, int area2num)
 			lreach->next = areareachability[area1num];
 			areareachability[area1num] = lreach;
 			//
+#ifdef DEBUG
 			reach_ladder++;
+#endif // DEBUG
 			//create a new reachability link
 			lreach = AAS_AllocReachability();
 			if (!lreach) return qfalse;
@@ -2518,7 +2540,9 @@ static int AAS_Reachability_Ladder(int area1num, int area2num)
 			lreach->next = areareachability[area2num];
 			areareachability[area2num] = lreach;
 			//
+#ifdef DEBUG
 			reach_ladder++;
+#endif // DEBUG
 			//
 			return qtrue;
 		} //end if
@@ -2542,7 +2566,9 @@ static int AAS_Reachability_Ladder(int area1num, int area2num)
 			lreach->next = areareachability[area1num];
 			areareachability[area1num] = lreach;
 			//
+#ifdef DEBUG
 			reach_ladder++;
+#endif // DEBUG
 			//create a new reachability link
 			lreach = AAS_AllocReachability();
 			if (!lreach) return qfalse;
@@ -2556,7 +2582,9 @@ static int AAS_Reachability_Ladder(int area1num, int area2num)
 			lreach->next = areareachability[area2num];
 			areareachability[area2num] = lreach;
 			//
+#ifdef DEBUG
 			reach_walkoffledge++;
+#endif // DEBUG
 			//
 			return qtrue;
 		} //end if
@@ -2637,7 +2665,9 @@ static int AAS_Reachability_Ladder(int area1num, int area2num)
 					lreach->next = areareachability[area1num];
 					areareachability[area1num] = lreach;
 					//
+#ifdef DEBUG
 					reach_ladder++;
+#endif // DEBUG
 					//create a new reachability link
 					lreach = AAS_AllocReachability();
 					if (!lreach) return qfalse;
@@ -2654,7 +2684,9 @@ static int AAS_Reachability_Ladder(int area1num, int area2num)
 					lreach->next = areareachability[area2num];
 					areareachability[area2num] = lreach;
 					//
+#ifdef DEBUG
 					reach_jump++;
+#endif // DEBUG
 					//
 					return qtrue;
 #ifdef REACH_DEBUG
@@ -2703,7 +2735,9 @@ static int AAS_Reachability_Ladder(int area1num, int area2num)
 					lreach->next = areareachability[area2num];
 					areareachability[area2num] = lreach;
 					//
+#ifdef DEBUG
 					reach_jump++;
+#endif // DEBUG
 					//
 					Log_Write("jump far to ladder reach between %d and %d\r\n", area2num, area1num);
 					//
@@ -2930,7 +2964,9 @@ static void AAS_Reachability_Teleport(void)
 			lreach->next = areareachability[area1num];
 			areareachability[area1num] = lreach;
 			//
+#ifdef DEBUG
 			reach_teleport++;
+#endif // DEBUG
 		} //end for
 		//unlink the invalid entity
 		AAS_UnlinkFromAreas(areas);
@@ -3146,7 +3182,9 @@ static void AAS_Reachability_Elevator(void)
 						Log_Write("elevator reach from %d to %d\r\n", area1num, area2num);
 #endif //REACH_DEBUG
 						//
+#ifdef DEBUG
 						reach_elevator++;
+#endif // DEBUG
 					} //end for
 				} //end for
 			} //end for
@@ -3470,7 +3508,9 @@ static void AAS_Reachability_FuncBobbing(void)
 					lreach->traveltype = TRAVEL_FUNCBOB;
 					lreach->traveltype |= AAS_TravelFlagsForTeam(ent);
 					lreach->traveltime = aassettings.rs_funcbob;
+#ifdef DEBUG
 					reach_funcbob++;
+#endif // DEBUG
 					lreach->next = areareachability[startreach->areanum];
 					areareachability[startreach->areanum] = lreach;
 					//
@@ -3670,7 +3710,9 @@ static void AAS_Reachability_JumpPad(void)
 					lreach->next = areareachability[link->areanum];
 					areareachability[link->areanum] = lreach;
 					//
+#ifdef DEBUG
 					reach_jumppad++;
+#endif // DEBUG
 				} //end for
 			} //end if
 		} //end if
@@ -3773,7 +3815,9 @@ static void AAS_Reachability_JumpPad(void)
 									lreach->next = areareachability[link->areanum];
 									areareachability[link->areanum] = lreach;
 									//
+#ifdef DEBUG
 									reach_jumppad++;
+#endif // DEBUG
 								} //end for
 							}
 						} //end if
@@ -3922,7 +3966,9 @@ static int AAS_Reachability_Grapple(int area1num, int area2num)
 		lreach->next = areareachability[area1num];
 		areareachability[area1num] = lreach;
 		//
+#ifdef DEBUG
 		reach_grapple++;
+#endif // DEBUG
 	} //end for
 	//
 	return qfalse;
@@ -4114,7 +4160,9 @@ int AAS_Reachability_WeaponJump(int area1num, int area2num)
 						lreach->next = areareachability[area1num];
 						areareachability[area1num] = lreach;
 						//
+#ifdef DEBUG
 						reach_rocketjump++;
+#endif // DEBUG
 						return qtrue;
 					} //end if
 				} //end if
@@ -4299,7 +4347,9 @@ static void AAS_Reachability_WalkOffLedge(int areanum)
 						lreach->next = areareachability[areanum];
 						areareachability[areanum] = lreach;
 						//we've got another walk off ledge reachability
+#ifdef DEBUG
 						reach_walkoffledge++;
+#endif // DEBUG
 					} //end if
 				} //end for
 			} //end for

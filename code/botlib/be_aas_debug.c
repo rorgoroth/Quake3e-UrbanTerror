@@ -47,7 +47,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 static int debuglines[MAX_DEBUGLINES];
 static int debuglinevisible[MAX_DEBUGLINES];
-static int numdebuglines;
 
 static int debugpolygons[MAX_DEBUGPOLYGONS];
 
@@ -132,7 +131,6 @@ void AAS_DebugLine(vec3_t start, vec3_t end, int color)
 		{
 			debuglines[line] = botimport.DebugLineCreate();
 			debuglinevisible[line] = qfalse;
-			numdebuglines++;
 		} //end if
 		if (!debuglinevisible[line])
 		{
@@ -222,7 +220,6 @@ void AAS_DrawPlaneCross(vec3_t point, vec3_t normal, float dist, int type, int c
 			debuglines[line] = botimport.DebugLineCreate();
 			lines[j++] = debuglines[line];
 			debuglinevisible[line] = qtrue;
-			numdebuglines++;
 		} //end if
 		else if (!debuglinevisible[line])
 		{
@@ -274,7 +271,6 @@ void AAS_ShowBoundingBox(vec3_t origin, vec3_t mins, vec3_t maxs)
 				debuglines[line] = botimport.DebugLineCreate();
 				lines[j++] = debuglines[line];
 				debuglinevisible[line] = qtrue;
-				numdebuglines++;
 			} //end if
 			else if (!debuglinevisible[line])
 			{
@@ -457,7 +453,6 @@ void AAS_ShowArea(int areanum, int groundfacesonly)
 			{
 				debuglines[line] = botimport.DebugLineCreate();
 				debuglinevisible[line] = qfalse;
-				numdebuglines++;
 			} //end if
 			if (!debuglinevisible[line])
 			{

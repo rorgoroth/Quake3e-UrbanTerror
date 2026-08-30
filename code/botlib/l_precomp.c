@@ -109,7 +109,6 @@ typedef struct directive_s
 
 #define TOKEN_HEAP_SIZE		4096
 
-static int numtokens;
 /*
 int tokenheapinitialized;				//true when the token heap is initialized
 token_t token_heap[TOKEN_HEAP_SIZE];	//heap with tokens
@@ -278,7 +277,6 @@ static token_t *PC_CopyToken(token_t *token)
 //	freetokens = freetokens->next;
 	Com_Memcpy(t, token, sizeof(token_t));
 	t->next = NULL;
-	numtokens++;
 	return t;
 } //end of the function PC_CopyToken
 //============================================================================
@@ -293,7 +291,6 @@ static void PC_FreeToken(token_t *token)
 	FreeMemory(token);
 //	token->next = freetokens;
 //	freetokens = token;
-	numtokens--;
 } //end of the function PC_FreeToken
 //============================================================================
 //
@@ -3255,4 +3252,3 @@ void PC_CheckOpenSourceHandles( void )
 		} //end if
 	} //end for
 } //end of the function PC_CheckOpenSourceHandles
-

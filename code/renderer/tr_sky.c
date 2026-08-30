@@ -46,7 +46,6 @@ static const vec3_t sky_clip[6] =
 };
 
 static float	sky_mins[2][6], sky_maxs[2][6];
-static float	sky_min, sky_max;
 static float	sky_min_depth;
 
 /*
@@ -471,8 +470,6 @@ static void DrawSkySide( image_t *image, const int mins[2], const int maxs[2] )
 static void DrawSkyBox( const shader_t *shader )
 {
 	int		i;
-	sky_min = 0;
-	sky_max = 1;
 
 	for ( i = 0; i < 6; i++ )
 	{
@@ -630,9 +627,6 @@ static void R_BuildCloudData( const shaderCommands_t *input )
 	const shader_t *shader;
 
 	shader = input->shader;
-
-	sky_min = 1.0 / 256.0f;		// FIXME: not correct?
-	sky_max = 255.0 / 256.0f;
 
 	// set up for drawing
 	tess.numIndexes = 0;

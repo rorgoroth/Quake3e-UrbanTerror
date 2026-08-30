@@ -1827,14 +1827,16 @@ void NET_Init( void ) {
 #ifdef _WIN32
 	int		r;
 
-	r = WSAStartup( MAKEWORD( 2, 0 ), &winsockdata );
-	if( r ) {
-		Com_Printf( S_COLOR_YELLOW "WARNING: Winsock initialization failed, returned %d\n", r );
-		return;
-	}
+	if ( !winsockInitialized ) {
+		r = WSAStartup( MAKEWORD( 2, 0 ), &winsockdata );
+		if( r ) {
+			Com_Printf( S_COLOR_YELLOW "WARNING: Winsock initialization failed, returned %d\n", r );
+			return;
+		}
 
-	winsockInitialized = qtrue;
-	Com_DPrintf( "Winsock Initialized\n" );
+		winsockInitialized = qtrue;
+		Com_DPrintf( "Winsock Initialized\n" );
+	}
 #endif
 
 	NET_Config( qtrue );
@@ -1856,8 +1858,10 @@ void NET_Shutdown( void ) {
 	NET_Config( qfalse );
 
 #ifdef _WIN32
-	WSACleanup();
-	winsockInitialized = qfalse;
+	if ( winsockInitialized ) {
+		WSACleanup();
+		winsockInitialized = qfalse;
+	}
 #endif
 }
 

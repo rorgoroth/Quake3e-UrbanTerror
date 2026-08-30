@@ -80,8 +80,6 @@ typedef struct {
 #define	WRAP_POINT_EPSILON	0.1
 */
 
-static int c_totalPatchBlocks;
-
 static const patchCollide_t	*debugPatchCollide;
 static const facet_t		*debugFacet;
 static qboolean		debugBlock;
@@ -1365,8 +1363,6 @@ struct patchCollide_s *CM_GeneratePatchCollide( int width, int height, vec3_t *p
 			AddPointToBounds( grid.points[i][j], pf->bounds[0], pf->bounds[1] );
 		}
 	}
-
-	c_totalPatchBlocks += ( grid.width - 1 ) * ( grid.height - 1 );
 
 	// generate a bsp tree for the surface
 	CM_PatchCollideFromGrid( &grid, pf );

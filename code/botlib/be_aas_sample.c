@@ -61,8 +61,6 @@ typedef struct aas_tracestack_s
 	int nodenum;		//node found after splitting with planenum
 } aas_tracestack_t;
 
-static int numaaslinks;
-
 //===========================================================================
 //
 // Parameter:				-
@@ -120,8 +118,6 @@ void AAS_InitAASLinkHeap(void)
 	aasworld.linkheap[max_aaslinks-1].next_ent = NULL;
 	//pointer to the first free link
 	aasworld.freelinks = &aasworld.linkheap[0];
-	//
-	numaaslinks = max_aaslinks;
 } //end of the function AAS_InitAASLinkHeap
 //===========================================================================
 //
@@ -158,7 +154,6 @@ aas_link_t *AAS_AllocAASLink(void)
 	} //end if
 	if (aasworld.freelinks) aasworld.freelinks = aasworld.freelinks->next_ent;
 	if (aasworld.freelinks) aasworld.freelinks->prev_ent = NULL;
-	numaaslinks--;
 	return link;
 } //end of the function AAS_AllocAASLink
 //===========================================================================
@@ -175,7 +170,6 @@ static void AAS_DeAllocAASLink(aas_link_t *link)
 	link->prev_area = NULL;
 	link->next_area = NULL;
 	aasworld.freelinks = link;
-	numaaslinks++;
 } //end of the function AAS_DeAllocAASLink
 //===========================================================================
 //
