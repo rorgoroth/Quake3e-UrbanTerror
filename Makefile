@@ -1,4 +1,3 @@
-
 # Quake3 Unix Makefile
 #
 # Nov '98 by Zoid <zoid@idsoftware.com>
@@ -154,32 +153,17 @@ USE_CCACHE=0
 endif
 export USE_CCACHE
 
-ifndef USE_LOCAL_HEADERS
-USE_LOCAL_HEADERS=1
-endif
-
-ifndef USE_CURL
-USE_CURL=1
-endif
-
+# NOTE: USE_LOCAL_HEADERS, USE_CURL, USE_OGG_VORBIS, USE_SYSTEM_OGG and
+# USE_SYSTEM_VORBIS are already given hard defaults near the top of this
+# file (and may be overridden via Makefile.local), so no ifndef guard is
+# needed for them here. USE_CURL_DLOPEN has no top-level default, so it
+# keeps its guard below.
 ifndef USE_CURL_DLOPEN
   ifdef MINGW
     USE_CURL_DLOPEN=0
   else
     USE_CURL_DLOPEN=1
   endif
-endif
-
-ifndef USE_OGG_VORBIS
-  USE_OGG_VORBIS=1
-endif
-
-ifndef USE_SYSTEM_OGG
-  USE_SYSTEM_OGG=1
-endif
-
-ifndef USE_SYSTEM_VORBIS
-  USE_SYSTEM_VORBIS=1
 endif
 
 ifeq ($(USE_RENDERER_DLOPEN),0)
@@ -291,7 +275,14 @@ ifneq ($(COMPILE_PLATFORM),darwin)
 VERSION=$(shell grep ".\+define[ \t]\+Q3_VERSION[ \t]\+\+" $(CMDIR)/q_shared.h | \
   sed -e 's/.*".* \([^ ]*\)"/\1/')
 else
-VERSION=1.32e
+# BSD grep/sed on macOS accept the same pattern, so try the real extraction
+# first; fall back to the last-known version only if that somehow yields
+# nothing, so this doesn't silently go stale when Q3_VERSION is bumped.
+VERSION:=$(strip $(shell grep ".\+define[ \t]\+Q3_VERSION[ \t]\+\+" $(CMDIR)/q_shared.h | \
+  sed -e 's/.*".* \([^ ]*\)"/\1/'))
+ifeq ($(VERSION),)
+VERSION=ioQ3 1.35 urt 4.3.4
+endif
 endif
 
 # common qvm definition
@@ -689,6 +680,12 @@ ifeq ($(USE_CCACHE),1)
   CC := ccache $(CC)
 endif
 
+# When the renderer isn't built as a dlopen()'d shared object, it's
+# statically linked into the client, so it needs none of SHLIBCFLAGS'
+# PIC/visibility flags. NOTSHLIBCFLAGS is intentionally empty; it exists
+# as a named hook in case a platform ever needs flags here.
+NOTSHLIBCFLAGS=
+
 ifneq ($(USE_RENDERER_DLOPEN),0)
     RENDCFLAGS=$(SHLIBCFLAGS)
 else
@@ -779,9 +776,9 @@ ifneq ($(BUILD_CLIENT),0)
   $(call GENERATE_COPY_TARGETS,$(CLIENT_EXTRA_FILES))
 endif
 
-# Create the build directories and tools, print out
+# Create the build directories, print out
 # an informational message, then start building
-targets: makedirs tools
+targets: makedirs
 	@echo ""
 	@echo "Building quake3 in $(B):"
 	@echo ""
@@ -1425,7 +1422,6 @@ ifeq ($(HAVE_VM_COMPILED),true)
 endif
 
 $(B)/$(TARGET_SERVER): $(Q3DOBJ)
-	$(echo_cmd) $(Q3DOBJ)
 	$(echo_cmd) "LD $@"
 	$(Q)$(CC) -o $@ $(Q3DOBJ) $(LDFLAGS)
 
@@ -1536,7 +1532,8 @@ $(B)/ded/%.o: $(W32DIR)/%.rc
 install: release
 	@for i in $(TARGETS); do \
 		if [ -f $(BR)$$i ]; then \
-			$(INSTALL) -D -m 0755 "$(BR)/$$i" "$(DESTDIR)$$i"; \
+			$(MKDIR) "$$(dirname $(DESTDIR)$$i)"; \
+			$(INSTALL) -m 0755 "$(BR)/$$i" "$(DESTDIR)$$i"; \
 			$(STRIP) "$(DESTDIR)$$i"; \
 		fi \
 	done
@@ -1569,6 +1566,6 @@ ifneq ($(strip $(D_FILES)),)
  include $(D_FILES)
 endif
 
-.PHONY: all clean clean2 clean-debug clean-release copyfiles \
-	debug default dist distclean makedirs release \
-	targets tools toolsclean
+.PHONY: all clean clean2 clean-debug clean-release \
+	debug default distclean install makedirs release \
+	targets
