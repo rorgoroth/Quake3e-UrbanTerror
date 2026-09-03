@@ -2706,6 +2706,7 @@ Called directly from cgame
 */
 void RE_LoadWorldMap( const char *name ) {
 	int			i;
+	int32_t		size;
 	dheader_t	*header;
 	union {
 		byte *b;
@@ -2742,10 +2743,14 @@ void RE_LoadWorldMap( const char *name ) {
 
 	tr.worldMapLoaded = qtrue;
 
-	// load it
-    ri.FS_ReadFile( name, &buffer.v );
+	// try to get from cache first
+	size = ri.Hunk_GetTempMemory( &buffer.v );
+	if ( size == 0 ) {
+		// load it
+		size = ri.FS_ReadFile( name, &buffer.v );
+	}
 	if ( !buffer.b ) {
-		ri.Error (ERR_DROP, "RE_LoadWorldMap: %s not found", name);
+		ri.Error( ERR_DROP, "%s: couldn't load %s", __func__, name );
 	}
 
 	// clear tr.world so if the level fails to load, the next
