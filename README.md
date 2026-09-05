@@ -10,7 +10,6 @@ Go to [Releases](https://github.com/rorgoroth/Quake3e-UrbanTerror/releases) for 
   - [Key features](#key-features)
   - [Vulkan renderer](#vulkan-renderer)
   - [OpenGL renderer](#opengl-renderer)
-  - [OpenGL2 renderer](#opengl2-renderer)
   - [Common changes/additions](#common-changesadditions)
   - [Client-specific changes/additions](#client-specific-changesadditions)
   - [Server-specific changes/additions](#server-specific-changesadditions)
@@ -80,10 +79,6 @@ Based on classic OpenGL renderers from [idq3](https://github.com/id-Software/Qua
 * Bloom reflection post-processing effect
 
 Performance is usually greater or equal to other opengl1 renderers
-
-## OpenGL2 renderer
-
-Original ioquake3 renderer, performance is very poor on non-nvidia systems, unmaintained
 
 ## Common changes/additions
 
