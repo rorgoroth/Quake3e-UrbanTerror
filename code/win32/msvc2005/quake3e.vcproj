@@ -43,8 +43,8 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\libogg\include;..\..\libvorbis\include;..\..\libcurl\windows\include;$(NOINHERIT)"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_OGG_VORBIS;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;DISABLE_IPV6;$(NOINHERIT)"
+				AdditionalIncludeDirectories="..\..\libcurl\windows\include;$(NOINHERIT)"
+				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;DISABLE_IPV6;$(NOINHERIT)"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
 				AssemblerListingLocation="$(IntDir)\"
@@ -130,8 +130,8 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\libogg\include;..\..\libvorbis\include;..\..\libcurl\windows\include;$(NOINHERIT)"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_OGG_VORBIS;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;$(NOINHERIT)"
+				AdditionalIncludeDirectories="..\..\libcurl\windows\include;$(NOINHERIT)"
+				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;$(NOINHERIT)"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
 				AssemblerListingLocation="$(IntDir)\"
@@ -217,8 +217,8 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="..\..\libogg\include;..\..\libvorbis\include;..\..\libcurl\windows\include;$(NOINHERIT)"
-				PreprocessorDefinitions="WIN32;_WIN32;NDEBUG;_WINDOWS;USE_SKIPIDLOGO;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_OGG_VORBIS;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;DISABLE_IPV6;$(NOINHERIT)"
+				AdditionalIncludeDirectories="..\..\libcurl\windows\include;$(NOINHERIT)"
+				PreprocessorDefinitions="WIN32;_WIN32;NDEBUG;_WINDOWS;USE_SKIPIDLOGO;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;DISABLE_IPV6;$(NOINHERIT)"
 				AssemblerListingLocation="$(IntDir)\"
 			/>
 			<Tool
@@ -297,8 +297,8 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="..\..\libogg\include;..\..\libvorbis\include;..\..\libcurl\windows\include;$(NOINHERIT)"
-				PreprocessorDefinitions="WIN32;_WIN32;NDEBUG;_WINDOWS;USE_SKIPIDLOGO;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_OGG_VORBIS;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;$(NOINHERIT)"
+				AdditionalIncludeDirectories="..\..\libcurl\windows\include;$(NOINHERIT)"
+				PreprocessorDefinitions="WIN32;_WIN32;NDEBUG;_WINDOWS;USE_SKIPIDLOGO;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;$(NOINHERIT)"
 				AssemblerListingLocation="$(IntDir)\"
 			/>
 			<Tool
@@ -541,10 +541,6 @@
 			</File>
 			<File
 				RelativePath="..\..\client\snd_codec.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_codec_ogg.c"
 				>
 			</File>
 			<File

@@ -37,10 +37,6 @@ USE_CURL          = 1
 USE_LOCAL_HEADERS = 0
 USE_SYSTEM_JPEG   = 0
 
-USE_OGG_VORBIS    = 1
-USE_SYSTEM_OGG    = 0
-USE_SYSTEM_VORBIS = 0
-
 USE_OPENGL        = 0
 USE_OPENGL_API    = 0
 USE_OPENGL2       = 0
@@ -153,11 +149,10 @@ USE_CCACHE=0
 endif
 export USE_CCACHE
 
-# NOTE: USE_LOCAL_HEADERS, USE_CURL, USE_OGG_VORBIS, USE_SYSTEM_OGG and
-# USE_SYSTEM_VORBIS are already given hard defaults near the top of this
-# file (and may be overridden via Makefile.local), so no ifndef guard is
-# needed for them here. USE_CURL_DLOPEN has no top-level default, so it
-# keeps its guard below.
+# NOTE: USE_LOCAL_HEADERS and USE_CURL are already given hard defaults near
+# the top of this file (and may be overridden via Makefile.local), so no
+# ifndef guard is needed for them here. USE_CURL_DLOPEN has no top-level
+# default, so it keeps its guard below.
 ifndef USE_CURL_DLOPEN
   ifdef MINGW
     USE_CURL_DLOPEN=0
@@ -213,8 +208,6 @@ UDIR=$(MOUNT_DIR)/unix
 W32DIR=$(MOUNT_DIR)/win32
 BLIBDIR=$(MOUNT_DIR)/botlib
 JPDIR=$(MOUNT_DIR)/libjpeg
-OGGDIR=$(MOUNT_DIR)/libogg
-VORBISDIR=$(MOUNT_DIR)/libvorbis
 
 bin_path=$(shell which $(1) 2> /dev/null)
 
@@ -231,14 +224,6 @@ ifneq ($(call bin_path, $(PKG_CONFIG)),)
     X11_INCLUDE ?= $(shell $(PKG_CONFIG) --silence-errors --cflags-only-I x11)
     X11_LIBS ?= $(shell $(PKG_CONFIG) --silence-errors --libs x11)
   endif
-  ifeq ($(USE_SYSTEM_OGG),1)
-    OGG_CFLAGS ?= $(shell $(PKG_CONFIG) --silence-errors --cflags ogg || true)
-    OGG_LIBS ?= $(shell $(PKG_CONFIG) --silence-errors --libs ogg || echo -logg)
-  endif
-  ifeq ($(USE_SYSTEM_VORBIS),1)
-    VORBIS_CFLAGS ?= $(shell $(PKG_CONFIG) --silence-errors --cflags vorbisfile || true)
-    VORBIS_LIBS ?= $(shell $(PKG_CONFIG) --silence-errors --libs vorbisfile || echo -lvorbisfile)
-  endif
 endif
 
 # supply some reasonable defaults for SDL/X11
@@ -250,24 +235,6 @@ ifeq ($(X11_LIBS),)
 endif
 ifeq ($(SDL_LIBS),)
   SDL_LIBS = -lSDL2
-endif
-
-# supply some reasonable defaults for ogg/vorbis
-ifeq ($(OGG_FLAGS),)
-  OGG_FLAGS = -I$(OGGDIR)/include
-endif
-ifeq ($(VORBIS_FLAGS),)
-  VORBIS_FLAGS = -I$(VORBISDIR)/include -I$(VORBISDIR)/lib
-endif
-ifeq ($(USE_SYSTEM_OGG),1)
-  ifeq ($(OGG_LIBS),)
-    OGG_LIBS = -logg
-  endif
-endif
-ifeq ($(USE_SYSTEM_VORBIS),1)
-  ifeq ($(VORBIS_LIBS),)
-    VORBIS_LIBS = -lvorbisfile
-  endif
 endif
 
 # extract version info
@@ -481,11 +448,6 @@ ifdef MINGW
     CLIENT_LDFLAGS += -lcurl -lwldap32 -lcrypt32 -lncrypt -lz -lzstd -lbrotlienc -lbrotlidec -lbrotlicommon -lpsl -liphlpapi -lsspicli
   endif
 
-  ifeq ($(USE_OGG_VORBIS),1)
-    BASE_CFLAGS += -DUSE_OGG_VORBIS $(OGG_FLAGS) $(VORBIS_FLAGS)
-    CLIENT_LDFLAGS += $(OGG_LIBS) $(VORBIS_LIBS)
-  endif
-
   DEBUG_CFLAGS = $(BASE_CFLAGS) -DDEBUG -D_DEBUG -g -O0
   RELEASE_CFLAGS = $(BASE_CFLAGS) -DNDEBUG $(OPTIMIZE)
 
@@ -539,11 +501,6 @@ ifeq ($(COMPILE_PLATFORM),darwin)
 
   ifeq ($(USE_SYSTEM_JPEG),1)
     CLIENT_LDFLAGS += -ljpeg
-  endif
-
-  ifeq ($(USE_OGG_VORBIS),1)
-    BASE_CFLAGS += -DUSE_OGG_VORBIS $(OGG_FLAGS) $(VORBIS_FLAGS)
-    CLIENT_LDFLAGS += $(OGG_LIBS) $(VORBIS_LIBS)
   endif
 
   DEBUG_CFLAGS = $(BASE_CFLAGS) -DDEBUG -D_DEBUG -g -O0
@@ -619,11 +576,6 @@ else
     ifeq ($(USE_CURL_DLOPEN),0)
       CLIENT_LDFLAGS += -lcurl
     endif
-  endif
-
-  ifeq ($(USE_OGG_VORBIS),1)
-    BASE_CFLAGS += -DUSE_OGG_VORBIS $(OGG_FLAGS) $(VORBIS_FLAGS)
-    CLIENT_LDFLAGS += $(OGG_LIBS) $(VORBIS_LIBS)
   endif
 
   ifeq ($(PLATFORM),linux)
@@ -814,12 +766,6 @@ makedirs:
 	@if [ ! -d $(B) ];then $(MKDIR) $(B);fi
 	@if [ ! -d $(B)/client ];then $(MKDIR) $(B)/client/qvm;fi
 	@if [ ! -d $(B)/client/jpeg ];then $(MKDIR) $(B)/client/jpeg;fi
-ifeq ($(USE_SYSTEM_OGG),0)
-	@if [ ! -d $(B)/client/ogg ];then $(MKDIR) $(B)/client/ogg;fi
-endif
-ifeq ($(USE_SYSTEM_VORBIS),0)
-	@if [ ! -d $(B)/client/vorbis ];then $(MKDIR) $(B)/client/vorbis;fi
-endif
 	@if [ ! -d $(B)/rend1 ];then $(MKDIR) $(B)/rend1;fi
 	@if [ ! -d $(B)/rend2 ];then $(MKDIR) $(B)/rend2;fi
 	@if [ ! -d $(B)/rend2/glsl ];then $(MKDIR) $(B)/rend2/glsl;fi
@@ -1036,39 +982,6 @@ JPGOBJ = \
   $(B)/client/jpeg/jquant2.o \
   $(B)/client/jpeg/jutils.o
 
-ifeq ($(USE_OGG_VORBIS),1)
-ifeq ($(USE_SYSTEM_OGG),0)
-OGGOBJ = \
-  $(B)/client/ogg/bitwise.o \
-  $(B)/client/ogg/framing.o
-endif
-
-ifeq ($(USE_SYSTEM_VORBIS),0)
-VORBISOBJ = \
-  $(B)/client/vorbis/analysis.o \
-  $(B)/client/vorbis/bitrate.o \
-  $(B)/client/vorbis/block.o \
-  $(B)/client/vorbis/codebook.o \
-  $(B)/client/vorbis/envelope.o \
-  $(B)/client/vorbis/floor0.o \
-  $(B)/client/vorbis/floor1.o \
-  $(B)/client/vorbis/info.o \
-  $(B)/client/vorbis/lookup.o \
-  $(B)/client/vorbis/lpc.o \
-  $(B)/client/vorbis/lsp.o \
-  $(B)/client/vorbis/mapping0.o \
-  $(B)/client/vorbis/mdct.o \
-  $(B)/client/vorbis/psy.o \
-  $(B)/client/vorbis/registry.o \
-  $(B)/client/vorbis/res0.o \
-  $(B)/client/vorbis/smallft.o \
-  $(B)/client/vorbis/sharedbook.o \
-  $(B)/client/vorbis/synthesis.o \
-  $(B)/client/vorbis/vorbisfile.o \
-  $(B)/client/vorbis/window.o
-endif
-endif
-
 Q3OBJ = \
   $(B)/client/cl_cgame.o \
   $(B)/client/cl_cin.o \
@@ -1162,11 +1075,6 @@ Q3OBJ = \
 
 ifneq ($(USE_SYSTEM_JPEG),1)
   Q3OBJ += $(JPGOBJ)
-endif
-
-ifeq ($(USE_OGG_VORBIS),1)
-  Q3OBJ += $(OGGOBJ) $(VORBISOBJ) \
-    $(B)/client/snd_codec_ogg.o
 endif
 
 ifneq ($(USE_RENDERER_DLOPEN),1)
@@ -1448,12 +1356,6 @@ $(B)/client/%.o: $(BLIBDIR)/%.c
 	$(DO_BOT_CC)
 
 $(B)/client/jpeg/%.o: $(JPDIR)/%.c
-	$(DO_CC)
-
-$(B)/client/ogg/%.o: $(OGGDIR)/src/%.c
-	$(DO_CC)
-
-$(B)/client/vorbis/%.o: $(VORBISDIR)/lib/%.c
 	$(DO_CC)
 
 $(B)/client/%.o: $(SDLDIR)/%.c
