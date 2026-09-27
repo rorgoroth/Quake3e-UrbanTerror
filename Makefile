@@ -9,14 +9,14 @@
 #
 # GNU Make required
 #
-COMPILE_PLATFORM=$(shell uname | sed -e 's/_.*//' | tr '[:upper:]' '[:lower:]' | sed -e 's/\//_/g')
-COMPILE_ARCH=$(shell uname -m | sed -e 's/i.86/x86/' | sed -e 's/^arm.*/arm/')
+COMPILE_PLATFORM:=$(shell uname | sed -e 's/_.*//' | tr '[:upper:]' '[:lower:]' | sed -e 's/\//_/g')
+COMPILE_ARCH:=$(shell uname -m | sed -e 's/i.86/x86/' | sed -e 's/^arm.*/arm/')
 
 ifeq ($(shell uname -m),arm64)
   COMPILE_ARCH=aarch64
 else
 ifeq ($(COMPILE_ARCH),aarch64)
-  LONG_BIT=$(shell [ -x /usr/bin/getconf ] && getconf LONG_BIT)
+  LONG_BIT:=$(shell [ -x /usr/bin/getconf ] && getconf LONG_BIT)
   ifeq ($(LONG_BIT),32)
     COMPILE_ARCH=arm
   endif
@@ -32,9 +32,15 @@ endif
 BUILD_CLIENT      = 1
 BUILD_SERVER      = 1
 
-USE_SDL           = 0
+ifeq ($(COMPILE_PLATFORM),darwin)
+  USE_SDL           = 1
+  USE_LOCAL_HEADERS = 1
+else
+  USE_SDL           = 0
+  USE_LOCAL_HEADERS = 0
+endif
+
 USE_CURL          = 1
-USE_LOCAL_HEADERS = 0
 USE_SYSTEM_JPEG   = 0
 
 USE_OPENGL        = 0
@@ -42,7 +48,7 @@ USE_OPENGL_API    = 0
 USE_VULKAN        = 1
 USE_VULKAN_API    = 1
 
-USE_Q3KEY	        = 1
+USE_Q3KEY         = 1
 USE_URT_DEMO      = 1
 
 USE_RENDERER_DLOPEN = 0
@@ -73,12 +79,6 @@ endif
 #
 #############################################################################
 -include Makefile.local
-
-ifeq ($(COMPILE_PLATFORM),darwin)
-  USE_SDL=1
-  USE_LOCAL_HEADERS=1
-  USE_RENDERER_DLOPEN = 0
-endif
 
 ifeq ($(COMPILE_PLATFORM),cygwin)
   PLATFORM=mingw32
@@ -228,7 +228,7 @@ endif
 
 # extract version info
 ifneq ($(COMPILE_PLATFORM),darwin)
-VERSION=$(shell grep ".\+define[ \t]\+Q3_VERSION[ \t]\+\+" $(CMDIR)/q_shared.h | \
+VERSION:=$(shell grep ".\+define[ \t]\+Q3_VERSION[ \t]\+\+" $(CMDIR)/q_shared.h | \
   sed -e 's/.*".* \([^ ]*\)"/\1/')
 else
 # BSD grep/sed on macOS accept the same pattern, so try the real extraction
@@ -824,7 +824,7 @@ Q3RENDVOBJ = \
   $(B)/rendv/tr_world.o \
   $(B)/rendv/vk.o \
   $(B)/rendv/vk_flares.o \
-  $(B)/rendv/vk_vbo.o \
+  $(B)/rendv/vk_vbo.o
 
 ifneq ($(USE_RENDERER_DLOPEN), 0)
   Q3RENDVOBJ += \
@@ -838,10 +838,10 @@ JPGOBJ = \
   $(B)/client/jpeg/jcapimin.o \
   $(B)/client/jpeg/jcapistd.o \
   $(B)/client/jpeg/jcarith.o \
-  $(B)/client/jpeg/jccoefct.o  \
+  $(B)/client/jpeg/jccoefct.o \
   $(B)/client/jpeg/jccolor.o \
   $(B)/client/jpeg/jcdctmgr.o \
-  $(B)/client/jpeg/jchuff.o   \
+  $(B)/client/jpeg/jchuff.o \
   $(B)/client/jpeg/jcinit.o \
   $(B)/client/jpeg/jcmainct.o \
   $(B)/client/jpeg/jcmarker.o \
@@ -1315,7 +1315,7 @@ clean: clean-debug clean-release
 
 clean2:
 	@echo "CLEAN $(B)"
-	@if [ -d $(B) ];then (find $(B) -name '*.d' -exec rm {} \;)fi
+	@if [ -d $(B) ]; then find $(B) -name '*.d' -exec rm {} \; ; fi
 	@rm -f $(Q3OBJ) $(Q3DOBJ)
 	@rm -f $(TARGETS)
 
@@ -1333,7 +1333,7 @@ distclean: clean
 # DEPENDENCIES
 #############################################################################
 
-D_FILES=$(shell find . -name '*.d')
+D_FILES=$(shell find $(BUILD_DIR) -name '*.d' 2>/dev/null)
 
 ifneq ($(strip $(D_FILES)),)
  include $(D_FILES)
