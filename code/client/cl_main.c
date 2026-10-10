@@ -1194,12 +1194,30 @@ static void CL_NextDemo( void ) {
 /*
 =====================
 CL_ShutdownVMs
+
+Called by CL_Shutdown(), Cl_ShutdownAll(), vid_restart code,
+
+right before CL_ShutdownRef() so it is safe to clean hunk
 =====================
 */
 static void CL_ShutdownVMs( void )
 {
+	// clear and mute all sounds until next registration
+	S_DisableSounds();
+
 	CL_ShutdownCGame();
 	CL_ShutdownUI();
+
+	// there is no valid gamestate to record at this stage but do this
+	// after CGAME/UI shutdown to let it finish own auto recording/renaming stuff
+	if ( clc.demorecording )
+		CL_StopRecord_f();
+
+	// no cine conusmers at this stage
+	CIN_CloseAllVideos();
+
+	// clear all the client data on the hunk
+	Hunk_Clear( h_low );
 }
 
 
@@ -1215,9 +1233,6 @@ void CL_ShutdownAll( void ) {
 #ifdef USE_CURL
 	CL_cURL_Shutdown();
 #endif
-
-	// clear and mute all sounds until next registration
-	S_DisableSounds();
 
 	// shutdown VMs
 	CL_ShutdownVMs();
@@ -1240,25 +1255,6 @@ void CL_ShutdownAll( void ) {
 
 /*
 =================
-CL_ClearMemory
-=================
-*/
-void CL_ClearMemory( void ) {
-	// if not running a server clear the whole hunk
-	if ( !com_sv_running->integer ) {
-		// clear the whole hunk
-		Hunk_Clear();
-		// clear collision map data
-		CM_ClearMap();
-	} else {
-		// clear all the client data on the hunk
-		Hunk_ClearToMark();
-	}
-}
-
-
-/*
-=================
 CL_FlushMemory
 
 Called by CL_Disconnect_f, CL_DownloadsComplete
@@ -1269,8 +1265,6 @@ void CL_FlushMemory( void ) {
 
 	// shutdown all the client stuff
 	CL_ShutdownAll();
-
-	CL_ClearMemory();
 
 	CL_StartHunkUsers();
 }
@@ -1425,11 +1419,6 @@ qboolean CL_Disconnect( qboolean showMainMenu ) {
 
 	cl_disconnecting = qtrue;
 
-	// Stop demo recording
-	if ( clc.demorecording ) {
-		CL_StopRecord_f();
-	}
-
 	// Stop demo playback
 	if ( clc.demofile != FS_INVALID_HANDLE ) {
 		FS_FCloseFile( clc.demofile );
@@ -1455,6 +1444,11 @@ qboolean CL_Disconnect( qboolean showMainMenu ) {
 	if ( cgvm ) {
 		// do that right after we rendered last video frame
 		CL_ShutdownCGame();
+	}
+
+	// Stop demo recording
+	if ( clc.demorecording ) {
+		CL_StopRecord_f();
 	}
 
 	SCR_StopCinematic();
@@ -2001,12 +1995,6 @@ static void CL_Vid_Restart( refShutdownCode_t shutdownCode ) {
 	if ( CL_VideoRecording() )
 		CL_CloseAVI( qfalse );
 
-	if ( clc.demorecording )
-		CL_StopRecord_f();
-
-	// clear and mute all sounds until next registration
-	S_DisableSounds();
-
 	// shutdown VMs
 	CL_ShutdownVMs();
 
@@ -2027,8 +2015,6 @@ static void CL_Vid_Restart( refShutdownCode_t shutdownCode ) {
 
 	// unpause so the cgame definitely gets a snapshot and renders a frame
 	Cvar_Set( "cl_paused", "0" );
-
-	CL_ClearMemory();
 
 	// startup all the client stuff
 	CL_StartHunkUsers();
@@ -3444,7 +3430,7 @@ static void CL_ShutdownRef( refShutdownCode_t code ) {
 #endif
 
 	// clear and mute all sounds until next registration
-	// S_DisableSounds();
+	// S_DisableSounds(); // -> already done in CL_ShutdownVMs()
 
 	if ( code >= REF_DESTROY_WINDOW ) { // +REF_UNLOAD_DLL
 		// shutdown sound system before renderer
@@ -4407,9 +4393,6 @@ void CL_Shutdown( const char *finalmsg, qboolean quit ) {
 
 	noGameRestart = quit;
 	CL_Disconnect( qfalse );
-
-	// clear and mute all sounds until next registration
-	S_DisableSounds();
 
 	CL_ShutdownVMs();
 
