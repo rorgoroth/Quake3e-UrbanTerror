@@ -30,6 +30,23 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifndef SVN_VERSION
   #define SVN_VERSION Q3_VERSION
 #endif
+
+// Build date and git revision, for on-screen display only (Q3_VERSION stays the
+// network / user-agent identity). The Makefile passes -DBUILD_DATE="Mon DD YYYY"
+// and -DBUILD_REV="a1b2c3d" (see BUILD_DATE_OBJS there, which must list every
+// file that uses these); other build systems fall back to the compiler's __DATE__
+// and no revision.
+#ifdef BUILD_DATE
+  #define Q3_BUILD_DATE       BUILD_DATE
+#else
+  #define Q3_BUILD_DATE       __DATE__
+#endif
+#ifdef BUILD_REV
+  #define Q3_REV_SUFFIX       " (" BUILD_REV ")"
+#else
+  #define Q3_REV_SUFFIX       ""
+#endif
+#define Q3_VERSION_LONG       Q3_VERSION " " Q3_BUILD_DATE Q3_REV_SUFFIX
 #define CLIENT_WINDOW_TITLE   "Urban Terror Slim"
 #define CONSOLE_WINDOW_TITLE  "Urt Console"
 // 1.32 released 7-10-2002

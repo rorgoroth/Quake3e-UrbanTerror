@@ -1016,8 +1016,8 @@ static void Con_DrawSolidConsole( float frac ) {
 
 	// draw the version number
 	re.SetColor( g_color_table[ ColorIndex( COLOR_RED ) ] );
-	SCR_DrawSmallString( cls.glconfig.vidWidth - ( ARRAY_LEN( Q3_VERSION ) ) * smallchar_width,
-		lines - smallchar_height, Q3_VERSION, ARRAY_LEN( Q3_VERSION ) - 1 );
+	SCR_DrawSmallString( cls.glconfig.vidWidth - ( ARRAY_LEN( Q3_VERSION_LONG ) ) * smallchar_width,
+		lines - smallchar_height, Q3_VERSION_LONG, ARRAY_LEN( Q3_VERSION_LONG ) - 1 );
 
 	// draw the text
 	currentCon->vislines = lines;

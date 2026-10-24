@@ -679,10 +679,10 @@ default: release
 all: debug release
 
 debug:
-	@$(MAKE) targets B=$(BD) CFLAGS="$(CFLAGS) $(DEBUG_CFLAGS)" LDFLAGS="$(LDFLAGS) $(DEBUG_LDFLAGS)" V=$(V)
+	@$(MAKE) targets B=$(BD) CFLAGS="$(CFLAGS) $(DEBUG_CFLAGS)" LDFLAGS="$(LDFLAGS) $(DEBUG_LDFLAGS)" V=$(V) BUILD_DATE="$(BUILD_DATE)" BUILD_REV="$(BUILD_REV)"
 
 release:
-	@$(MAKE) targets B=$(BR) CFLAGS="$(CFLAGS) $(RELEASE_CFLAGS)" V=$(V)
+	@$(MAKE) targets B=$(BR) CFLAGS="$(CFLAGS) $(RELEASE_CFLAGS)" V=$(V) BUILD_DATE="$(BUILD_DATE)" BUILD_REV="$(BUILD_REV)"
 
 define ADD_COPY_TARGET
 TARGETS += $2
@@ -705,11 +705,11 @@ ifneq ($(BUILD_CLIENT),0)
   $(call GENERATE_COPY_TARGETS,$(CLIENT_EXTRA_FILES))
 endif
 
-# Build date shown in the console banner, the "version" cvar and --version.
+# Build date shown in the console, the startup banner, the "version" cvar and --version.
 # __DATE__ is only evaluated when the file containing it is recompiled, so a
 # nightly rebuild that touches no sources keeps showing the old date. Instead,
 # pass the current date in and always recompile the files that display it
-# (cheap: two small files plus a relink). Set BUILD_DATE= (empty) to disable.
+# (cheap: a few small files plus a relink). Set BUILD_DATE= (empty) to disable.
 # Honours SOURCE_DATE_EPOCH for reproducible builds.
 ifndef BUILD_DATE
 ifdef SOURCE_DATE_EPOCH
@@ -719,11 +719,27 @@ BUILD_DATE:=$(shell LC_ALL=C date +'%b %e %Y')
 endif
 endif
 
+# Git revision shown next to the date (console + startup banner), e.g. "a1b2c3d"
+# or "a1b2c3d-dirty" when the tree has uncommitted changes. Only taken from a
+# checkout that has its own .git (never from a parent repo this tree happens to
+# sit in); empty when git or .git is missing. Override with BUILD_REV=... (or the
+# environment) e.g. in CI, or BUILD_REV= to disable.
+ifndef BUILD_REV
+ifneq ($(wildcard $(CURDIR)/.git),)
+BUILD_REV:=$(shell git -C "$(CURDIR)" describe --always --dirty --abbrev=7 --exclude='*' 2>/dev/null)
+endif
+endif
+
+# Everything that displays the build date / revision (keep in sync with q_shared.h)
 BUILD_DATE_OBJS = $(B)/client/common.o $(B)/ded/common.o \
-                  $(B)/client/unix_main.o $(B)/ded/unix_main.o
+                  $(B)/client/unix_main.o $(B)/ded/unix_main.o \
+                  $(B)/client/cl_console.o
 
 ifneq ($(BUILD_DATE),)
 $(BUILD_DATE_OBJS): override CFLAGS += -DBUILD_DATE='"$(BUILD_DATE)"'
+ifneq ($(BUILD_REV),)
+$(BUILD_DATE_OBJS): override CFLAGS += -DBUILD_REV='"$(BUILD_REV)"'
+endif
 $(BUILD_DATE_OBJS): FORCE
 endif
 

@@ -3927,22 +3927,6 @@ void Q_SetFPUCW( unsigned short *cw )
 
 /*
 =================
-Build date
-
-The Makefile passes -DBUILD_DATE="\"Mon DD YYYY\"" when compiling this file so
-the date is refreshed on every make run (not only when this file changes).
-Other build systems fall back to the compiler's __DATE__.
-=================
-*/
-#ifdef BUILD_DATE
-#define Q3_BUILD_DATE BUILD_DATE
-#else
-#define Q3_BUILD_DATE __DATE__
-#endif
-
-
-/*
-=================
 Com_Init
 =================
 */
@@ -3953,7 +3937,7 @@ void Com_Init( char *commandLine ) {
 	// get the initial time base
 	Sys_Milliseconds();
 
-	Com_Printf( "%s %s %s\n", SVN_VERSION, PLATFORM_STRING, Q3_BUILD_DATE );
+	Com_Printf( "%s %s %s%s\n", SVN_VERSION, PLATFORM_STRING, Q3_BUILD_DATE, Q3_REV_SUFFIX );
 
 	if ( Q_setjmp( abortframe ) ) {
 		Sys_Error ("Error during initialization");
