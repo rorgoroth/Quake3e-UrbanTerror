@@ -705,6 +705,30 @@ ifneq ($(BUILD_CLIENT),0)
   $(call GENERATE_COPY_TARGETS,$(CLIENT_EXTRA_FILES))
 endif
 
+# Build date shown in the console banner, the "version" cvar and --version.
+# __DATE__ is only evaluated when the file containing it is recompiled, so a
+# nightly rebuild that touches no sources keeps showing the old date. Instead,
+# pass the current date in and always recompile the files that display it
+# (cheap: two small files plus a relink). Set BUILD_DATE= (empty) to disable.
+# Honours SOURCE_DATE_EPOCH for reproducible builds.
+ifndef BUILD_DATE
+ifdef SOURCE_DATE_EPOCH
+BUILD_DATE:=$(shell LC_ALL=C date -u -d "@$(SOURCE_DATE_EPOCH)" +'%b %e %Y' 2>/dev/null || LC_ALL=C date -u -r "$(SOURCE_DATE_EPOCH)" +'%b %e %Y' 2>/dev/null)
+else
+BUILD_DATE:=$(shell LC_ALL=C date +'%b %e %Y')
+endif
+endif
+
+BUILD_DATE_OBJS = $(B)/client/common.o $(B)/ded/common.o \
+                  $(B)/client/unix_main.o $(B)/ded/unix_main.o
+
+ifneq ($(BUILD_DATE),)
+$(BUILD_DATE_OBJS): override CFLAGS += -DBUILD_DATE='"$(BUILD_DATE)"'
+$(BUILD_DATE_OBJS): FORCE
+endif
+
+FORCE:
+
 # Create the build directories, print out
 # an informational message, then start building
 targets: makedirs
@@ -1341,4 +1365,4 @@ endif
 
 .PHONY: all clean clean2 clean-debug clean-release \
 	debug default distclean install makedirs release \
-	targets
+	targets FORCE

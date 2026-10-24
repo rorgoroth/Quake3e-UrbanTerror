@@ -3927,6 +3927,22 @@ void Q_SetFPUCW( unsigned short *cw )
 
 /*
 =================
+Build date
+
+The Makefile passes -DBUILD_DATE="\"Mon DD YYYY\"" when compiling this file so
+the date is refreshed on every make run (not only when this file changes).
+Other build systems fall back to the compiler's __DATE__.
+=================
+*/
+#ifdef BUILD_DATE
+#define Q3_BUILD_DATE BUILD_DATE
+#else
+#define Q3_BUILD_DATE __DATE__
+#endif
+
+
+/*
+=================
 Com_Init
 =================
 */
@@ -3937,7 +3953,7 @@ void Com_Init( char *commandLine ) {
 	// get the initial time base
 	Sys_Milliseconds();
 
-	Com_Printf( "%s %s %s\n", SVN_VERSION, PLATFORM_STRING, __DATE__ );
+	Com_Printf( "%s %s %s\n", SVN_VERSION, PLATFORM_STRING, Q3_BUILD_DATE );
 
 	if ( Q_setjmp( abortframe ) ) {
 		Sys_Error ("Error during initialization");
@@ -4133,7 +4149,7 @@ void Com_Init( char *commandLine ) {
 	Cmd_SetCommandCompletionFunc( "writeconfig", Cmd_CompleteWriteCfgName );
 	Cmd_AddCommand( "game_restart", Com_GameRestart_f );
 
-	s = va( "%s %s %s", Q3_VERSION, PLATFORM_STRING, __DATE__ );
+	s = va( "%s %s %s", Q3_VERSION, PLATFORM_STRING, Q3_BUILD_DATE );
 	com_version = Cvar_Get( "version", s, CVAR_PROTECTED | CVAR_ROM | CVAR_SERVERINFO );
 	Cvar_SetDescription( com_version, "Read-only CVAR to see the version of the game." );
 
