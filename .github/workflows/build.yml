@@ -107,6 +107,11 @@ jobs:
     needs: [windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: Download Artifacts
         uses: actions/download-artifact@v8
 
@@ -121,6 +126,48 @@ jobs:
         id: date
         run: echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
 
+      - name: Generate release notes
+        id: notes
+        env:
+          DATE: ${{ steps.date.outputs.DATE }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Most recent tag reachable from this commit, ignoring today's tag
+          # (it may already exist if the workflow is re-run on the same day).
+          PREV_TAG=$(git describe --tags --abbrev=0 --exclude="$DATE" HEAD 2>/dev/null || true)
+
+          {
+            if [ -n "$PREV_TAG" ]; then
+              echo "## Changes since $PREV_TAG"
+              echo
+              COMMITS=$(git log "$PREV_TAG..HEAD" --pretty=format:'- %s (%h) - %an')
+              if [ -n "$COMMITS" ]; then
+                echo "$COMMITS"
+              else
+                echo "No new commits."
+              fi
+              echo
+              echo "**Full diff**: https://github.com/$REPO/compare/$PREV_TAG...$DATE"
+            else
+              echo "## Changes"
+              echo
+              git log HEAD --pretty=format:'- %s (%h) - %an'
+              echo
+            fi
+          } > RELEASE_NOTES.md
+
+          cat RELEASE_NOTES.md
+
+          # Multi-line step output, with a random delimiter so a commit message
+          # can't terminate it early.
+          DELIM="EOF_$(openssl rand -hex 8)"
+          {
+            echo "NOTES<<$DELIM"
+            cat RELEASE_NOTES.md
+            echo
+            echo "$DELIM"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Upload Releases
         uses: svenstaro/upload-release-action@latest
         with:
@@ -129,6 +176,7 @@ jobs:
             *.zip
           tag: ${{ steps.date.outputs.DATE }}
           release_name: ${{ steps.date.outputs.DATE }}
+          body: ${{ steps.notes.outputs.NOTES }}
           overwrite: true
           file_glob: true
           draft: false
